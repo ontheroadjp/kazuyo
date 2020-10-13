@@ -1,0 +1,259 @@
+#!/bin/bash
+
+set -Ceu
+#set -x
+
+SELF=$(cd $(dirname $0); pwd)
+
+BASE_DIR=''
+DIST_DIR=''
+REPORT_DIR=''
+DUPLICATE_DIR=''
+
+ORIGINAL_FILES=''
+ORIGINAL_FILES_UNIQUE=''
+ORIGINAL_FILES_DUPLICATE=''
+
+EXIF_DATE=''
+EXIF_DATE_UNIQUE=''
+EXIF_DATE_DUPLICATE=''
+
+MV_LIST_UNIQUE=''
+MV_LIST_DUPLICATE=''
+
+EXT=''
+
+function _init() {
+    BASE_DIR=$(echo $2 | sed -e 's:\/$::') # remove last '/'
+    DIST_DIR="${BASE_DIR}/dist"
+    REPORT_DIR="${DIST_DIR}/report"
+    DUPLICATE_DIR="${DIST_DIR}/duplicate"
+
+    ORIGINAL_FILES=${REPORT_DIR}/original.txt
+    ORIGINAL_FILES_UNIQUE=${REPORT_DIR}/original_unique.txt
+    ORIGINAL_FILES_DUPLICATE=${REPORT_DIR}/original_duplicate.txt
+
+    EXIF_DATE=${REPORT_DIR}/exif_date.txt
+    EXIF_DATE_UNIQUE=${REPORT_DIR}/exif_date_unique.txt
+    EXIF_DATE_DUPLICATE=${REPORT_DIR}/exif_date_duplicate.txt
+
+    MV_LIST_UNIQUE=${REPORT_DIR}/mv_list_unique.txt
+    MV_LIST_DUPLICATE=${REPORT_DIR}/mv_list_duplicate.txt
+
+    EXT="(JPG|jpg|jpeg|PNG|png|TIFF|TIF|tiff|tif|CR2|NEF|ARW|MOV|mov|AVI|avi|MPG|mpg|mp4)"
+
+    [ $1 == 'checkup' ] && [ -e ${REPORT_DIR} ] && rm -rf ${REPORT_DIR}
+    mkdir -p ${REPORT_DIR}
+    mkdir -p ${DUPLICATE_DIR}
+
+    touch ${ORIGINAL_FILES} ${ORIGINAL_FILES_UNIQUE} ${ORIGINAL_FILES_DUPLICATE}
+    touch ${EXIF_DATE} ${EXIF_DATE_UNIQUE} ${EXIF_DATE_DUPLICATE}
+    touch ${MV_LIST_UNIQUE} ${MV_LIST_DUPLICATE}
+}
+
+function _show_status() {
+    echo "Initialized on $(date)"
+    echo "----------------------------------------------------------"
+    echo "<Target>"
+    echo $(echo ${EXT} | sed 's/(//g' | sed 's/)//g' | sed 's/|/ /g')
+    echo "in $2"
+    echo ""
+    echo "<Original>"
+    echo "$(cat ${ORIGINAL_FILES} | wc -l) files found."
+    echo "$(cat ${ORIGINAL_FILES_UNIQUE} | wc -l) files in unique list."
+    echo "$(cat ${ORIGINAL_FILES_DUPLICATE} | wc -l) files in duplicated list."
+    [ $(cat ${ORIGINAL_FILES_DUPLICATE} | wc -l) -ne 0 ] && {
+        echo ""
+        echo "<duplicated hash (one file has gone into unique list and others into duplicate list.)>"
+        cat ${ORIGINAL_FILES} \
+            | sort \
+            | cut -d ',' -f 1 \
+            | uniq -c \
+            | awk ' { if( $1 != 1 ) print $1 " files has " $2"." }'
+    }
+    echo ""
+    echo "<Exif Date>"
+    echo "$(cat ${EXIF_DATE_UNIQUE} | wc -l) files in unique list."
+    echo "$(cat ${EXIF_DATE_DUPLICATE} | wc -l) files in duplicated list."
+    echo ""
+    echo "<mv List>"
+    echo "$(cat ${MV_LIST_UNIQUE} | wc -l) files in unique list."
+    echo "$(cat ${MV_LIST_DUPLICATE} | wc -l) files in duplicated list."
+    echo "----------------------------------------------------------"
+}
+
+function _checkup() {
+
+    # crreate original.txt
+    # rename original to hash_name
+    # create hash_name.txt
+    find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 \
+        | xargs -0 md5sum | while IFS=$'\n' read line; do
+        hash=$(echo ${line} | cut -d ' ' -f 1)
+        file=$(echo ${line} | cut -d ' ' -f 2-)
+        echo "${hash},${file}" >> ${ORIGINAL_FILES}
+        hash_file=$(dirname "${file}")/${hash}.$(basename "${file##*.}")
+        mv "${file}" "${hash_file}"
+    done
+
+    # $1: all list
+    # $2: unique list
+    # $3: duplicate list
+    function _divide_file_list() {
+        cat ${1} | sort | awk \
+                    -v unique=${2} \
+                    -v duplicate=${3} \
+                        'BEGIN { FS=","; prev_hash="" } {
+                            if( prev_hash != $1 ) {
+                                print $0 >> unique
+                            } else {
+                                print $0 >> duplicate
+                            }
+                            prev_hash=$1
+                        }'
+
+#        [ $(echo ${1} | wc -l) -ne $(( $(echo ${2}) + $(echo ${3}) )) ] && {
+#            echo "[ERROR] divide unique and duplicate failed." > 2
+#            echo "${1}" > 2
+#            exit 1
+#        }
+    }
+    _divide_file_list \
+        ${ORIGINAL_FILES} \
+        ${ORIGINAL_FILES_UNIQUE} \
+        ${ORIGINAL_FILES_DUPLICATE}
+
+    function _guess_photo_date() {
+            exiftool \
+                -lang ja \
+                ${BASE_DIR} \
+                -i dist \
+                -r \
+                -d %Y%m%d%H%M%S \
+                -p ${SELF}/lib/exifdate.fmt \
+                -fast2 \
+                -ext jpg -ext jpeg -ext png -ext tiff -ext tif \
+                -ext CR2 -ext NEF -ext ARW \
+                -ext mov -ext avi -ext mpg -ext mp4 \
+                -m \
+                | awk \
+                'BEGIN { FS=","; OFS="," } {
+                    min_v = 29991231235959
+                    if ( $2 != "" && $2 != "0000:00:00 00:00:00" && min_v > $2 ) {
+                        tag = "DateTimeOriginal"
+                        min_v = $2
+                    } else if ( $3 != "" && $3 != "0000:00:00 00:00:00" && min_v > $3 ) {
+                        tag = "CreateDate"
+                        min_v = $3
+                    } else if ( $4 != "" && $4 != "0000:00:00 00:00:00" && min_v > $4 ) {
+                        tag = "ModifyDate"
+                        min_v = $4
+                    } else if ( $5 != "" && $5 != "0000:00:00 00:00:00" && min_v > $5 ) {
+                        tag = "FileModifyDate"
+                        min_v = $5
+                    } else {
+                        min_v = "none"
+                    }
+                    sub(/\..*$/,"",$1)
+                    print $1, tag, min_v, $2, $3, $4, $5
+                }'
+    }
+    _guess_photo_date >> ${EXIF_DATE}
+    _divide_file_list ${EXIF_DATE} ${EXIF_DATE_UNIQUE} ${EXIF_DATE_DUPLICATE}
+    _show_status $@
+}
+
+
+
+function _tidy_photo() {
+
+    # $1: exif date list
+    # $2: hash
+    function _make_date_dir() {
+        datetime=$(cat ${1} | grep ${2} | cut -d ',' -f 3)
+        to_dir=${DIST_DIR}/${datetime:0:4}年/${datetime:4:2}月/${datetime:0:8}
+        mkdir -p ${to_dir}
+        echo ${to_dir}
+    }
+
+    # $1: from
+    # $2: to
+    function _move_file() {
+        # move file
+        if [ ! -e "${2}" ]; then
+            mv "${1}" "${2}"
+            echo "${1},${2}"
+        else
+            for i in $(seq 999); do
+                fixed=${2%.*}_$(printf %03d ${i}).${2##*.}
+                [ ! -e ${fixed} ]  && {
+                    mv "${1}" "${fixed}"
+                    echo "${1},${fixed}"
+                    break;
+                }
+            done
+        fi
+    }
+
+    # Move file to date dir (unique)
+    cat ${ORIGINAL_FILES_UNIQUE} | while IFS=$'\n' read line; do
+        hash=$(echo ${line} | cut -d ',' -f 1)
+        original_file=$(echo ${line} | cut -d ',' -f 2-)
+        hash_file=$(dirname "${original_file}")/${hash}.${original_file##*.}
+
+        # make dir
+#        datetime=$(cat ${EXIF_DATE_UNIQUE} | grep ${hash} | cut -d ',' -f 3)
+#        to_dir=${DIST_DIR}/${datetime:0:4}年/${datetime:4:2}月/${datetime:0:8}
+        to_dir=$(_make_date_dir ${EXIF_DATE_UNIQUE} ${hash})
+        to=${to_dir}/$(basename "${original_file}")
+        mkdir -p ${to_dir}
+
+        # move file
+        _move_file "${hash_file}" "${to}" >> ${MV_LIST_UNIQUE}
+
+#        if [ ! -e "${to}" ]; then
+#            mv "${hash_file}" "${to}"
+#            echo "${hash_file},${to}" >> ${MV_LIST_UNIQUE}
+#        else
+#            for i in $(seq 999); do
+#                fixed=${to%.*}_$(printf %03d ${i}).${to##*.}
+#                [ ! -e ${fixed} ]  && {
+#                    mv "${hash_file}" "${fixed}"
+#                    echo "${hash_file},${fixed}" >> ${MV_LIST_UNIQUE}
+#                    break;
+#                }
+#            done
+#        fi
+    done
+
+    # Move file to date dir (duplicate)
+    cat ${ORIGINAL_FILES_DUPLICATE} | while IFS=$'\n' read line; do
+        hash=$(echo ${line} | cut -d ',' -f 1)
+        original_file=$(echo ${line} | cut -d ',' -f 2-)
+        hash_file=$(dirname "${original_file}")/${hash}.${original_file##*.}
+        _move_file "${hash_file}" "${DUPLICATE_DIR}" >> ${MV_LIST_DUPLICATE}
+    done
+
+    echo "done."
+}
+
+_init $@
+
+case ${1} in
+    checkup )
+        echo "CHECK UP: ${2}"
+        _checkup $@
+        ;;
+    tidy )
+        echo "TIDY: ${2}"
+        _tidy_photo $@
+        ;;
+    status )
+        _show_status $@
+        ;;
+    * )
+        echo bad param.
+        exit 1
+esac
+
+exit 0
