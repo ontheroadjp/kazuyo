@@ -28,7 +28,3 @@ $ sh kazuyo checkup <dir>
 $ kazuyo tidy <dir>
 ```
 
-
-
-
-
