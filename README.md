@@ -1,6 +1,6 @@
 # kazuyo
 
-This simple script is going to tidy photo files into date directory hierarchy like ``yyyy/mm/yyyymmdd/image.jpg``. Also, check for duplicate photo data, and if duplicates are found, gether them in the duplicate folder.
+This simple script is going to tidy photo files into date directory hierarchy like ``yyyy/mm/yyyymmdd/image.jpg``. Also, check for duplicate photo files, and if duplicates are found, gather them in the ``duplicate/`` directory.
 
 ## Getting Started
 
