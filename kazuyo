@@ -45,10 +45,12 @@ function _init() {
     [ $1 == 'checkup' ] && [ -e ${REPORT_DIR} ] && rm -rf ${REPORT_DIR}
     mkdir -p ${REPORT_DIR}
     mkdir -p ${DUPLICATE_DIR}
+}
 
-    touch ${ORIGINAL_FILES} ${ORIGINAL_FILES_UNIQUE} ${ORIGINAL_FILES_DUPLICATE}
-    touch ${EXIF_DATE} ${EXIF_DATE_UNIQUE} ${EXIF_DATE_DUPLICATE}
-    touch ${MV_LIST_UNIQUE} ${MV_LIST_DUPLICATE}
+function _reset_report() {
+    : > ${ORIGINAL_FILES}; : > ${ORIGINAL_FILES_UNIQUE}; : > ${ORIGINAL_FILES_DUPLICATE}
+    : > ${EXIF_DATE}; : > ${EXIF_DATE_UNIQUE}; : > ${EXIF_DATE_DUPLICATE}
+    : > ${MV_LIST_UNIQUE}; : > ${MV_LIST_DUPLICATE}
 }
 
 function _show_status() {
@@ -83,6 +85,7 @@ function _show_status() {
 }
 
 function _checkup() {
+    #set -x
 
     # crreate original.txt
     # rename original to hash_name
@@ -93,7 +96,11 @@ function _checkup() {
         file=$(echo ${line} | cut -d ' ' -f 2-)
         echo "${hash},${file}" >> ${ORIGINAL_FILES}
         hash_file=$(dirname "${file}")/${hash}.$(basename "${file##*.}")
-        mv "${file}" "${hash_file}"
+        [ ! -e "${hash_file}" ] && {
+            mv "${file}" "${hash_file}"
+        } || {
+            mv "${file}" "${DUPLICATE_DIR}/$(basename ${file})" >> ${MV_LIST_DUPLICATE}
+        }
     done
 
     # $1: all list
@@ -163,8 +170,6 @@ function _checkup() {
     _show_status $@
 }
 
-
-
 function _tidy_photo() {
 
     # $1: exif date list
@@ -231,22 +236,55 @@ function _tidy_photo() {
         hash=$(echo ${line} | cut -d ',' -f 1)
         original_file=$(echo ${line} | cut -d ',' -f 2-)
         hash_file=$(dirname "${original_file}")/${hash}.${original_file##*.}
-        _move_file "${hash_file}" "${DUPLICATE_DIR}" >> ${MV_LIST_DUPLICATE}
+        [ ! -e ${hash_file} ] && {
+            _move_file "${hash_file}" "${DUPLICATE_DIR}/$(basename ${original_file})" >> ${MV_LIST_DUPLICATE}
+        }
     done
 
     echo "done."
 }
 
+function _create_web_album() {
+    thumbsup --input ${DIST_DIR} --output ${DIST_DIR}/album --theme flow
+}
+
+function _to_sequential_number() {
+    STASH_IFS=${IFS}; IFS=$'\n'
+    local current_dir=''
+    local digits=6
+
+    for file in $(find -E ${BASE_DIR} -type f -regex "^.*\.${EXT}$" | sort); do
+        if [ "$(dirname ${file})" != "${current_dir}" ]; then
+            current_dir=$(dirname ${file})
+            counter=1
+        fi
+        renban=$(printf "%0${digits}d\n" "${counter}")
+        echo "[mv] ${file} ===> $(dirname ${file})/${renban}.${file##*.}"
+        mv -n "${file}" "$(dirname ${file})/${renban}.${file##*.}"
+        aa=$((counter++))
+    done
+    IFS=${STASH_IFS}
+}
+
 _init $@
 
 case ${1} in
-    checkup )
+    init )
         echo "CHECK UP: ${2}"
+        _reset_report $@
         _checkup $@
         ;;
     tidy )
-        echo "TIDY: ${2}"
+        echo "TIDY PHOTOs: ${2}"
         _tidy_photo $@
+        ;;
+    album )
+        echo "CREATE PHOTO ALBUM: ${2}"
+        _create_web_album $@
+        ;;
+    renban )
+        echo "RENAME SEQUENTIAL: ${2}"
+        _to_sequential_number $@
         ;;
     status )
         _show_status $@
