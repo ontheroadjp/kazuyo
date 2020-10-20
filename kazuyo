@@ -2,105 +2,99 @@
 
 set -Ceu
 
-SELF=$(cd $(dirname $0); pwd)
+function _set_constant() {
 
-BASE_DIR=''
-DIST_DIR=''
-REPORT_DIR=''
-DUPLICATE_DIR=''
+    # script
+    SELF=$(cd $(dirname $0); pwd)
 
-ORIGINAL_FILES=''
-ORIGINAL_FILES_UNIQUE=''
-ORIGINAL_FILES_DUPLICATE=''
+    # directory
+    readonly BASE_DIR=$(echo $2 | sed -e 's:\/$::') # remove last '/'
+    readonly TMP_DIR="${BASE_DIR}/tmp"
+    readonly DIST_DIR="${BASE_DIR}/dist"
+    readonly PHOTO_DATA_DIR="${DIST_DIR}/photo_data"
+    readonly REPORT_DIR="${DIST_DIR}/report"
+    readonly DUPLICATE_DIR="${DIST_DIR}/photo_data_duplicate"
 
-HASH_FILES_UNIQUE=''
+    # original file
+    readonly ORIGINAL_FILES=${REPORT_DIR}/original.txt
+    readonly ORIGINAL_FILES_UNIQUE=${REPORT_DIR}/original_unique.txt
+    readonly ORIGINAL_FILES_DUPLICATE=${REPORT_DIR}/original_duplicate.txt
 
-EXIF_DATE=''
-EXIF_DATE_UNIQUE=''
-EXIF_DATE_DUPLICATE=''
+    # hash file
+    readonly HASH_FILES_UNIQUE=${REPORT_DIR}/hash_file_unique.txt
 
-MV_LIST_UNIQUE=''
-MV_LIST_DUPLICATE=''
+    # exif date
+    readonly EXIF_DATE=${REPORT_DIR}/exif_date.txt
+    readonly EXIF_DATE_UNIQUE=${REPORT_DIR}/exif_date_unique.txt
+    readonly EXIF_DATE_DUPLICATE=${REPORT_DIR}/exif_date_duplicate.txt
 
-EXT=''
+    # mv list
+    readonly MV_LIST_UNIQUE=${REPORT_DIR}/mv_list_unique.txt
+    readonly MV_LIST_DUPLICATE=${REPORT_DIR}/mv_list_duplicate.txt
 
-function _is_exist() {
-    type $@ > /dev/null 2>&1
+    # target file type
+    readonly EXT="(JPG|jpg|jpeg|PNG|png|TIFF|TIF|tiff|tif|CR2|NEF|ARW|MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4)"
 }
 
-function _init() {
-    BASE_DIR=$(echo $2 | sed -e 's:\/$::') # remove last '/'
-    DIST_DIR="${BASE_DIR}/dist"
-    REPORT_DIR="${DIST_DIR}/report"
-    DUPLICATE_DIR="${DIST_DIR}/duplicate"
-
-    ORIGINAL_FILES=${REPORT_DIR}/original.txt
-    ORIGINAL_FILES_UNIQUE=${REPORT_DIR}/original_unique.txt
-    ORIGINAL_FILES_DUPLICATE=${REPORT_DIR}/original_duplicate.txt
-
-    HASH_FILES_UNIQUE=${REPORT_DIR}/hash_file_unique.txt
-
-    EXIF_DATE=${REPORT_DIR}/exif_date.txt
-    EXIF_DATE_UNIQUE=${REPORT_DIR}/exif_date_unique.txt
-    EXIF_DATE_DUPLICATE=${REPORT_DIR}/exif_date_duplicate.txt
-
-    MV_LIST_UNIQUE=${REPORT_DIR}/mv_list_unique.txt
-    MV_LIST_DUPLICATE=${REPORT_DIR}/mv_list_duplicate.txt
-
-    EXT="(JPG|jpg|jpeg|PNG|png|TIFF|TIF|tiff|tif|CR2|NEF|ARW|MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4)"
-}
-
-function _refresh_report() {
-    [ -e ${REPORT_DIR} ] && rm -rf ${REPORT_DIR}
-    mkdir -p ${REPORT_DIR}
-    mkdir -p ${DUPLICATE_DIR}
+function _clean_dist_dir() {
+    [ -d ${DIST_DIR} ] && rm -rf ${DIST_DIR}
+    mkdir -p ${TMP_DIR} ${PHOTO_DATA_DIR} ${REPORT_DIR} ${DUPLICATE_DIR}
     : > ${ORIGINAL_FILES}; : > ${ORIGINAL_FILES_UNIQUE}; : > ${ORIGINAL_FILES_DUPLICATE}
     : > ${HASH_FILES_UNIQUE};
     : > ${EXIF_DATE}; : > ${EXIF_DATE_UNIQUE}; : > ${EXIF_DATE_DUPLICATE}
     : > ${MV_LIST_UNIQUE}; : > ${MV_LIST_DUPLICATE}
 }
 
-function _show_status() {
+function _is_exist() {
+    type $@ > /dev/null 2>&1
+}
 
-    function _count() {
-        echo $(cat ${1} | wc -l)
-    }
+function _count() {
+    echo $(cat ${1} | wc -l)
+}
 
-    function _count_check() {
-        [ $1 -eq $2 ] && echo "OK" || echo "NG"
-    }
+function _verify_line_count() {
+    [ $1 -eq $2 ] && echo "OK" || echo "NG"
+}
 
+function _verify_tidy_result() {
     ori_uni=$(_count ${ORIGINAL_FILES_UNIQUE})
     ori_dup=$(_count ${ORIGINAL_FILES_DUPLICATE})
 
-    original_status=$(
-        _count_check $(_count ${ORIGINAL_FILES}) $(( ${ori_uni} + ${ori_dup} ))
-    )
+    org_status=$( _verify_line_count \
+        $(_count ${ORIGINAL_FILES}) $(( ${ori_uni} + ${ori_dup} )))
 
-    hash_file_status=$(
-        _count_check $(_count ${HASH_FILES_UNIQUE}) ${ori_uni}
-    )
+    hash_file_status=$( _verify_line_count \
+        $(_count ${HASH_FILES_UNIQUE}) ${ori_uni})
 
-    exif_date_status=$(
-        _count_check $(_count ${EXIF_DATE_UNIQUE}) ${ori_uni}
-    )
+    exif_date_status=$( _verify_line_count \
+        $(_count ${EXIF_DATE_UNIQUE}) ${ori_uni})
     [ ${exif_date_status} = "OK" ] && {
-        exif_date_status=$(_count_check $(_count ${EXIF_DATE_DUPLICATE}) 0)
+        exif_date_status=$(_verify_line_count $(_count ${EXIF_DATE_DUPLICATE}) 0)
     }
 
-    mv_list_status=$(
-        _count_check $(_count ${MV_LIST_UNIQUE}) ${ori_uni}
-    )
+    mv_list_status=$( _verify_line_count \
+        $(_count ${MV_LIST_UNIQUE}) ${ori_uni})
     [ ${mv_list_status} = "OK" ] && {
-        mv_list_status=$(_count_check $(_count ${MV_LIST_DUPLICATE}) ${ori_dup})
+        mv_list_status=$(_verify_line_count $(_count ${MV_LIST_DUPLICATE}) ${ori_dup})
     }
+
+    echo "${org_status},${hash_file_status},${exif_date_status},${mv_list_status}"
+}
+
+function _show_tidy_result() {
+    local st=$(_verify_tidy_result)
+    local org_status=$(echo ${st} | cut -d ',' -f 1)
+    local hash_file_status=$(echo ${st} | cut -d ',' -f 2)
+    local exif_date_status=$(echo ${st} | cut -d ',' -f 3)
+    local mv_list_status=$(echo ${st} | cut -d ',' -f 4)
 
     echo "---------------------------------------------------------------"
     echo "Initialized on $(date)"
     echo "for .$(echo ${EXT} | sed 's/(//g' | sed 's/)//g' | sed 's/|/ \./g')"
     echo " in $2"
     echo "---------------------------------------------------------------"
-    echo "[Original (${original_status})]"
+    echo "[Original (${org_status})]"
     printf "%8d files found.\n" $(_count ${ORIGINAL_FILES})
     printf "%8d files in unique list.%s\n" $(_count ${ORIGINAL_FILES_UNIQUE})
     printf "%8d files in duplicate list.\n" $(_count ${ORIGINAL_FILES_DUPLICATE})
@@ -119,23 +113,25 @@ function _show_status() {
     [ $(cat ${ORIGINAL_FILES_DUPLICATE} | wc -l) -ne 0 ] && {
         echo ""
         echo "[duplicated hash]"
-        echo " (one file has moved into unique list and others into duplicate list.)"
         cat ${ORIGINAL_FILES} \
             | sort \
             | cut -d ',' -f 1 \
             | uniq -c \
             | awk '{ if( $1 != 1 ) printf "%6d files has %s\n", $1, $2 }'
+        echo " (one file has moved into unique list and others into duplicate list.)"
     }
 }
 
 function _checkup() {
-    #set -x
+
+    echo "[checkup] clean up dist dir."
+    _clean_dist_dir
 
     local count=0
     local count_all=$(find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" | wc -l)
 
     # fetch all photo files in base/ including sub dir, but excluding dist/
-    echo "[INFO] create original file."
+    echo "[checkup] create original file."
     find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 \
         | xargs -0 md5sum | while IFS=$'\n' read line; do
 
@@ -144,29 +140,26 @@ function _checkup() {
         file=$(echo ${line} | cut -d ' ' -f 2-)
         echo "${hash},${file}" >> ${ORIGINAL_FILES}
 
-        hash_file=${BASE_DIR}/${hash}.$(basename "${file##*.}")
+        hash_file=${TMP_DIR}/${hash}.$(basename "${file##*.}")
 
-        # move unique to base/ as hash_file
-        [ ! -e "${hash_file}" ] && {
-            mv "${file}" "${hash_file}"
-            echo "${file}","${hash_file}" >> ${HASH_FILES_UNIQUE}
+        # copy unique to ${BASE_DIR} as hash_file
+        [ ! -f "${hash_file}" ] && {
+            cp "${file}" "${hash_file}"
+            echo "${hash}","${file}","${hash_file}" >> ${HASH_FILES_UNIQUE}
 
-        # move duplicate to dist/duplicate/
+        # copy duplicate to ${DUPLICATE_DIR}
         } || {
             for i in $(seq 999); do
                 fixed_dir=${DUPLICATE_DIR}/${hash}_$(printf %03d ${i})
-                [ ! -e ${fixed_dir} ]  && {
+                [ ! -d ${fixed_dir} ]  && {
                     mkdir "${fixed_dir}"
-                    mv "${file}" "${fixed_dir}/$(basename ${file})"
+                    cp "${file}" "${fixed_dir}/$(basename ${file})"
                     echo "${file}","${fixed_dir}/$(basename ${file})" >> ${MV_LIST_DUPLICATE}
 #                    _move_file "${file}" "${fixed_dir}/$(basename ${file})" >> ${MV_LIST_DUPLICATE}
                     break;
                 }
             done
         }
-
-    echo -ne "(( count++ )) / ${count_all}"
-
     done
 
     # $1: all list
@@ -185,18 +178,18 @@ function _checkup() {
     }
 
     # divide original.txt
-    echo "[INFO] divide original file."
+    echo "[checkup] divide original file."
     _divide_file_list \
         ${ORIGINAL_FILES} \
         ${ORIGINAL_FILES_UNIQUE} \
         ${ORIGINAL_FILES_DUPLICATE}
 
     function _guess_photo_date() {
-        et_ext=$(echo ${EXT} | sed 's/(/-ext /g' | sed 's/)//g' | sed 's/|/ -ext /g')
+        ext_option=$(echo ${EXT} | sed 's/(/-ext /g' | sed 's/)//g' | sed 's/|/ -ext /g')
         exiftool \
             -lang ja \
-            ${BASE_DIR} \
-            ${et_ext} \
+            ${TMP_DIR} \
+            ${ext_option} \
             -r \
             -i dist \
             -d %Y%m%d%H%M%S \
@@ -227,11 +220,12 @@ function _checkup() {
     }
 
     # create exif_date.txt
-    echo "[INFO] create exif file."
+    echo "[checkup] create exif date file."
     _guess_photo_date >> ${EXIF_DATE}
     _divide_file_list ${EXIF_DATE} ${EXIF_DATE_UNIQUE} ${EXIF_DATE_DUPLICATE}
-    _show_status $@
 
+    local st=$(_verify_tidy_result)
+    [ ${st:0:8} = "OK,OK,OK" ]
 }
 
 function _tidy_photo() {
@@ -240,7 +234,7 @@ function _tidy_photo() {
     # $2: hash
     function _make_date_dir() {
         datetime=$(cat ${1} | grep ${2} | cut -d ',' -f 3)
-        to_dir=${DIST_DIR}/${datetime:0:4}年/${datetime:4:2}月/${datetime:0:8}
+        to_dir=${PHOTO_DATA_DIR}/${datetime:0:4}年/${datetime:4:2}月/${datetime:0:8}
         mkdir -p ${to_dir}
         echo ${to_dir}
     }
@@ -265,10 +259,10 @@ function _tidy_photo() {
         fi
     }
 
-    [ ! -e ${ORIGINAL_FILES_UNIQUE} ] || \
-        [ ! -e ${HASH_FILES_UNIQUE} ] || \
-        [ ! -e ${EXIF_DATE_UNIQUE} ] || \
-        [ ! -e ${ORIGINAL_FILES_DUPLICATE} ] && {
+    [ ! -f ${ORIGINAL_FILES_UNIQUE} ] || \
+        [ ! -f ${HASH_FILES_UNIQUE} ] || \
+        [ ! -f ${EXIF_DATE_UNIQUE} ] || \
+        [ ! -f ${ORIGINAL_FILES_DUPLICATE} ] && {
         echo 'Run: "kazuyo init [dir]" first.'
         exit 1
     }
@@ -276,106 +270,87 @@ function _tidy_photo() {
     # Move file to date dir (unique)
     cat ${HASH_FILES_UNIQUE} | while IFS=$'\n' read line; do
         hash=$(echo ${line} | cut -d ',' -f 1)
-        #original_file=$(echo ${line} | cut -d ',' -f 2-)
-        #hash_file=$(dirname "${original_file}")/${hash}.${original_file##*.}
-        hash_file=$(echo ${line} | cut -d ',' -f 2-)
+        original_file=$(echo ${line} | cut -d ',' -f 2)
+        hash_file=$(echo ${line} | cut -d ',' -f 3)
 
         # make dir
-#        datetime=$(cat ${EXIF_DATE_UNIQUE} | grep ${hash} | cut -d ',' -f 3)
-#        to_dir=${DIST_DIR}/${datetime:0:4}年/${datetime:4:2}月/${datetime:0:8}
         to_dir=$(_make_date_dir ${EXIF_DATE_UNIQUE} ${hash})
-        #to=${to_dir}/$(basename "${original_file}")
-        to=${to_dir}/$(basename "${hash_file}")
-#        mkdir -p ${to_dir}
+        to=${to_dir}/$(basename "${original_file}")
 
         # move file
         _move_file "${hash_file}" "${to}" >> ${MV_LIST_UNIQUE}
 
     done
 
-#    # Move file to date dir (duplicate)
-#    cat ${ORIGINAL_FILES_DUPLICATE} | while IFS=$'\n' read line; do
-#        hash=$(echo ${line} | cut -d ',' -f 1)
-#        original_file=$(echo ${line} | cut -d ',' -f 2-)
-#        hash_file=$(dirname "${original_file}")/${hash}.${original_file##*.}
-#        [ ! -e ${hash_file} ] && {
-#            to="${DUPLICATE_DIR}/$(basename ${original_file})"
-#            _move_file "${hash_file}" "${to}" >> ${MV_LIST_DUPLICATE}
-#        }
-#    done
+    [ $(find ${TMP_DIR} | wc -l) -eq 1 ] && rm -rf ${TMP_DIR}
 
-    echo "done."
+    local st=$(_verify_tidy_result)
+    [ ${st} = "OK,OK,OK,OK" ]
 }
 
-function _create_web_album() {
-    if ! _is_exist thumbsup; then
-        echo "Install thumbsup first." 1>&2
-        echo "Run: npm install -g thumbsup" 1>&2
+function _param_check() {
+    if [ $# -ne 2 ] || [ ! -d "$2" ]; then
+        echo 'Illigal params.'
         exit 1
     fi
-    thumbsup --input ${DIST_DIR} --output ${DIST_DIR}/album --theme flow
 }
 
-# $1 file list
-function _export_kml() {
-    exiftool -p ${SELF}/lib/kml.fmt -r ${BASE_DIR} > ${DIST_DIR}/kml.xml
-}
+_param_check $@
 
-function _rename_sequential_number() {
-    STASH_IFS=${IFS}; IFS=$'\n'
-    local current_dir=''
-    local digits=4
-    local prefix="kazuyo_"
-
-    for file in $(find -E ${BASE_DIR} -type f -regex "^.*\.${EXT}$" | sort); do
-        if [ "$(dirname ${file})" != "${current_dir}" ]; then
-            current_dir=$(dirname ${file})
-            counter=1
-        fi
-        renban=$(printf "%0${digits}d\n" "${counter}")
-        renban_file="$(dirname ${file})/${prefix}${renban}.${file##*.}"
-
-        [ ${file} = ${renban_file} ] && continue
-        [ -e ${renban_file} ] && {
-            echo "stopped."
-            echo "already exist: ${renban_file}"
-            exit 1
-        }
-
-        echo "[mv] $(basename ${file}) ==> $(basename ${renban_file})"
-        mv -n "${file}" "${renban_file}"
-        ((counter++))
-    done
-    echo "all done"
-    IFS=${STASH_IFS}
-}
-
-_init $@
+printf "[init] start: ${2} ..."
+_set_constant $@
+printf "done.\n"
 
 case ${1} in
     init )
-        echo "[INFO] start CHECK UP: ${2}"
-        _refresh_report
-        _checkup
+        echo "[checkup] start: ${2}"
+        _checkup $@
+        [ $? -eq 0 ] && {
+            echo "[checkup] done."
+        } || {
+            echo "[checkup] failed initialize."
+            exit 1
+        }
         ;;
     tidy )
-        echo "[INFO} start TIDY PHOTOs: ${2}"
-        _tidy_photo
+        echo "[checkup] start: ${2}"
+        _checkup $@
+        [ $? -eq 0 ] && {
+            echo "[checkup] done."
+            echo "[tidy] start: ${2}"
+            _tidy_photo $@
+            echo "[tidy] done"
+        } || {
+            echo "[checkup] failed initialize."
+            exit 1
+        }
+        ;;
+    index )
+        echo "[index] start: ${2}"
+        source ${SELF}/fnc/_create_index.fnc
+        _create_index
+        echo "[index] done."
         ;;
     album )
-        echo "[INFO] start CREATE PHOTO ALBUM: ${2}"
-        _create_web_album
+        echo "[album] start: ${2}"
+        source ${SELF}/fnc/_create_album.fnc
+        _create_album
+        echo "[album] done."
         ;;
     kml )
-        echo "[INFO] start EXPORT KML FILE: ${2}"
+        echo "[kml] start: ${2}"
+        source ${SELF}/fnc/_export_kml.fnc
         _export_kml
+        echo "[kml] done."
         ;;
     renban )
-        echo "[INFO] start RENAME SEQUENTIAL: ${2}"
-        _rename_sequential_number
+        echo "[renban] start: ${2}"
+        source ${SELF}/fnc/_rename_sequencial_filename.fnc
+        _rename_sequential_filename
+        echo "[renban] done."
         ;;
     status )
-        _show_status
+        _show_tidy_result $@
         ;;
     * )
         echo bad argument.
