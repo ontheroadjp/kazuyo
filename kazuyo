@@ -2,30 +2,6 @@
 
 set -Ceu
 
-#SELF=$(cd $(dirname $0); pwd)
-#
-#BASE_DIR=''
-#TMP_DIR=''
-#DIST_DIR=''
-#PHOTO_DATA_DIR=''
-#REPORT_DIR=''
-#DUPLICATE_DIR=''
-#
-#ORIGINAL_FILES=''
-#ORIGINAL_FILES_UNIQUE=''
-#ORIGINAL_FILES_DUPLICATE=''
-#
-#HASH_FILES_UNIQUE=''
-#
-#EXIF_DATE=''
-#EXIF_DATE_UNIQUE=''
-#EXIF_DATE_DUPLICATE=''
-#
-#MV_LIST_UNIQUE=''
-#MV_LIST_DUPLICATE=''
-#
-#EXT=''
-
 function _set_constant() {
 
     # script
@@ -298,28 +274,14 @@ function _tidy_photo() {
         hash_file=$(echo ${line} | cut -d ',' -f 3)
 
         # make dir
-#        datetime=$(cat ${EXIF_DATE_UNIQUE} | grep ${hash} | cut -d ',' -f 3)
-#        to_dir=${PHOTO_DATA_DIR}/${datetime:0:4}年/${datetime:4:2}月/${datetime:0:8}
         to_dir=$(_make_date_dir ${EXIF_DATE_UNIQUE} ${hash})
         to=${to_dir}/$(basename "${original_file}")
-#        to=${to_dir}/$(basename "${hash_file}")
-#        mkdir -p ${to_dir}
 
         # move file
         _move_file "${hash_file}" "${to}" >> ${MV_LIST_UNIQUE}
 
     done
 
-#    # Move file to date dir (duplicate)
-#    cat ${ORIGINAL_FILES_DUPLICATE} | while IFS=$'\n' read line; do
-#        hash=$(echo ${line} | cut -d ',' -f 1)
-#        original_file=$(echo ${line} | cut -d ',' -f 2-)
-#        hash_file=$(dirname "${original_file}")/${hash}.${original_file##*.}
-#        [ ! -e ${hash_file} ] && {
-#            to="${DUPLICATE_DIR}/$(basename ${original_file})"
-#            _move_file "${hash_file}" "${to}" >> ${MV_LIST_DUPLICATE}
-#        }
-#    done
     [ $(find ${TMP_DIR} | wc -l) -eq 1 ] && rm -rf ${TMP_DIR}
 
     local st=$(_verify_tidy_result)
