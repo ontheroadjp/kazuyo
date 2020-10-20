@@ -1,4 +1,3 @@
-#!/bin/bash
 
 function _create_index() {
     local indexDir=${DIST_DIR}/index
@@ -17,7 +16,6 @@ function _create_index() {
     function _getNewFile() {
         local file=${1}
         local exifdate=$(exiftool -time:all -s -S -d %Y%m%d ${file} | sort | head -n 1)
-        #local to=${tmpDir}/${exifdate}.png
         local to=${tmpDir}/${exifdate}.${file##*.}
         if [ ! -f ${to} ]; then
             echo ${to}
@@ -40,7 +38,7 @@ function _create_index() {
         local filename=$(basename ${newFile})
         file=${newFile}
 
-#        label='2011.03.14'
+        # label='2011.03.14'
         label="${filename:0:4}.${filename:4:2}.${filename:6:2}"
 
         printf "[${filename}] "
