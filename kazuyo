@@ -48,10 +48,6 @@ function _rebuild_dist_dir() {
     touch ${MV_LIST_UNIQUE} ${MV_LIST_DUPLICATE}
 }
 
-function _is_exist() {
-    type $@ > /dev/null 2>&1
-}
-
 #function _count() {
 #    echo $(cat $1 | wc -l)
 #}
@@ -127,14 +123,14 @@ function _is_exist() {
 
 function _checkup() {
 
-    echo "[${SCRIPT_NAME}] clean up dist dir."
+    _log "clean up dist dir."
     _rebuild_dist_dir
 
     local count=0
     local count_all=$(find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" | wc -l)
 
     # fetch all photo files in base/ including sub dir, but excluding dist/
-    echo "[${SCRIPT_NAME}] create original file."
+    _log "create original file."
     find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 \
         | xargs -0 md5sum | while IFS=$'\n' read line; do
 
@@ -218,7 +214,7 @@ function _checkup() {
     }
 
     # create exif_date.txt
-    echo "[${SCRIPT_NAME}] create exif date file."
+    _log "create exif date file."
     _guess_photo_date >> ${EXIF_DATE}
     _divide_file_list ${EXIF_DATE} ${EXIF_DATE_UNIQUE} ${EXIF_DATE_DUPLICATE}
 
@@ -264,8 +260,7 @@ function _tidy_photo() {
         [ ! -f ${HASH_FILES_UNIQUE} ] || \
         [ ! -f ${EXIF_DATE_UNIQUE} ] || \
         [ ! -f ${ORIG_FILES_DUPLICATE} ] && {
-        echo 'Run: "kazuyo init [dir]" first.'
-        exit 1
+        _failed 'Run: "kazuyo init [dir]" first.'
     }
 
     # Move file to date dir (unique)
@@ -286,8 +281,7 @@ function _tidy_photo() {
     if [ $(find ${TMP_DIR} | wc -l) -eq 1 ]; then
         rm -rf ${TMP_DIR}
     else
-        echo "[${SCRIPT_NAME}] err moving file has not been done."
-        exit 1
+        _failed "err moving file has not been done."
     fi
 }
 
@@ -298,25 +292,24 @@ function _tidy_photo() {
 
 function _param_check() {
     if [ $# -ne 2 ] || [ ! -d "$2" ]; then
-        echo 'Illigal params'
-        exit 1
+        _failed 'Illigal params'
     fi
 }
 
-_param_check $@
 _set_constant $@
 . ${SELF}/fnc/_verification.fnc
+. ${SELF}/fnc/_utilities.fnc
+
+_param_check $@
 
 case $1 in
 #    checkup )
-#        echo "[${SCRIPT_NAME}] start: $2"
 #        _checkup $@
 #        _verify_checkup
 #        [ $? -eq 0 ] && {
-#            echo "[${SCRIPT_NAME}] done."
+#            _log "done."
 #        } || {
-#            echo "[${SCRIPT_NAME}] failed initialize."
-#            exit 1
+#            _failed "failed initialize."
 #        }
 #        ;;
     tidy )
@@ -324,13 +317,13 @@ case $1 in
         _checkup $@
         [ $(_verify_checkup) -ne 0 ] && {
             [ -d ${TMP_DIR} ] && rm -rf ${TMP_DIR}
-            echo "[${SCRIPT_NAME}] failed" && exit 1
+            _failed "failed"
         }
 
         _tidy_photo $@
         [ $(_verify_tidy) -ne 0 ] && {
             [ -d ${TMP_DIR} ] && rm -rf ${TMP_DIR}
-            echo "[${SCRIPT_NAME}] failed" && exit 1
+            _failed "failed"
         }
         ;;
     index )
