@@ -1,6 +1,6 @@
 function _rename_sequential_filename() {
     local current_dir=''
-    local digits=6
+    local digits=4
     local prefix="kazuyo_"
 
     STASH_IFS=${IFS}; IFS=$'\n'

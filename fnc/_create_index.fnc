@@ -5,8 +5,7 @@ function _create_index() {
     local thumbnailDir=${indexDir}/thumbnail
 
     [ -d ${indexDir} ] && {
-        echo "[index]: err ${indexDir} is already exist."
-        exit 1
+        _failed "index dir is already exist."
     }
 
     mkdir -p ${indexDir}/{tmp,L,M,S} ${thumbnailDir}
@@ -14,56 +13,91 @@ function _create_index() {
     echo '<html><body><div id="album" style="display: flex; flex-wrap: wrap">' > ${indexDir}/index.html
 
     function _getNewFile() {
-        local file=${1}
-        local exifdate=$(exiftool -time:all -s -S -d %Y%m%d ${file} | sort | head -n 1)
-        local to=${tmpDir}/${exifdate}.${file##*.}
-        if [ ! -f ${to} ]; then
+        local file=$1
+        local exifdate=$(
+                    exiftool -time:all -s -S -d %Y%m%d ${file} | \
+                        grep -v '0000:00:00 00:00:00' | \
+                        sort | \
+                        head -n 1
+                )
+        local to="${tmpDir}/${exifdate}.${file##*.}"
+        if [ ! -f "${to}" ] && [ ! -f "${to}.jpg" ]; then
             echo ${to}
         else
             for i in $(seq 9999); do
-                seqTo=${to%.*}-${i}.${to##*.}
-                [ ! -f ${seqTo} ] && {
+                seqTo="${to%.*}-${i}.${to##*.}"
+                if [ ! -f "${seqTo}" ] && [ ! -f "${seqTo}.jpg" ]; then
                     echo ${seqTo}
                     break
-                }
+                fi
             done
         fi
     }
 
-    for file in $(find -E ${PHOTO_DATA_DIR} -type f -regex "^.*\.${EXT}$" | sort); do
+    local ext="(JPG|jpg|jpeg|PNG|png|TIFF|TIF|tiff|tif|CR2|NEF|ARW|MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4)"
+    for file in $(find -E ${PHOTO_DATA_DIR} -type f -regex "^.*\.${ext}$" | sort); do
         [ -d ${file} ] && continue
 
-        local newFile=$(_getNewFile ${file})
-        cp ${file} ${newFile}
-        local filename=$(basename ${newFile})
-        file=${newFile}
+        printf "[$(basename ${file}) => "
+
+        # copy to tmp dir
+        local newFile="$(_getNewFile ${file})"
+
+        # for movie
+        if [[ ${file} =~ ^.*\.(MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4)$ ]]; then
+
+            # broken check
+            set +e
+            ffprobe "${file}" > /dev/null 2>&1
+            if [ $? -ne 0 ]; then
+                printf "$(basename ${file})] file is broken.\n"
+                continue
+            fi
+            set -e
+
+            # capture thumbnail
+            newFile=${newFile}.jpg
+            ffmpeg -i ${file} \
+                    -ss 3 \
+                    -vframes 1 \
+                    -f image2 \
+                    -s 240x240 \
+                    ${newFile}  > /dev/null 2>&1
+
+        # for picture
+        else
+            cp "${file}" "${newFile}"
+        fi
+
+        local filename=$(basename "${newFile}")
+        file="${newFile}"
 
         # label='2011.03.14'
         label="${filename:0:4}.${filename:4:2}.${filename:6:2}"
 
-        printf "[${filename}] "
+        printf "${filename}] "
 
         # fuzz photo
         printf 'fuzz'
-        convert ${file} +page -fuzz 10% -trim ${tmpDir}/${filename}.fuzz
+        convert "${file}" +page -fuzz 10% -trim "${tmpDir}/${filename}.fuzz"
 
         # resize photo
         printf ', resize'
-        convert -resize 240x240^ ${tmpDir}/${filename}.fuzz ${tmpDir}/${filename}.resize
+        convert -resize 240x240^ "${tmpDir}/${filename}.fuzz" "${tmpDir}/${filename}.resize"
 
         # crop photo
         printf ', crop'
-        convert ${tmpDir}/${filename}.resize -gravity center -crop 240x240+0+0  ${tmpDir}/${filename}.crop
+        convert "${tmpDir}/${filename}.resize" -gravity center -crop 240x240+0+0  "${tmpDir}/${filename}.crop"
 
         # create date img
-        printf ", date(${label})"
+        printf ", ${label}"
         convert -size 100x100 -gravity center -font 'Bookman-Demi' -fill '#fff' -trim \
-            -background 'rgba(0,0,0,0,0)' -pointsize 12 label:"${label}" ${tmpDir}/kazuyo_date_image.png
+            -background 'rgba(0,0,0,0,0)' -pointsize 12 label:"${label}" "${tmpDir}/kazuyo_date_image.png"
 
         # composite photo
         printf ', composit'
         composite -compose over -gravity southeast -geometry +10+10 \
-            ${tmpDir}/kazuyo_date_image.png ${tmpDir}/${filename}.crop ${thumbnailDir}/${filename}
+            "${tmpDir}/kazuyo_date_image.png" "${tmpDir}/${filename}.crop" "${thumbnailDir}/${filename}"
 
         # html
         printf ', html'
