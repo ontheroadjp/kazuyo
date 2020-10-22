@@ -4,15 +4,17 @@ function _create_index() {
     local tmpDir=${indexDir}/tmp
     local thumbnailDir=${indexDir}/thumbnail
 
-    [ -d ${indexDir} ] && {
-        _failed "index dir is already exist."
-    }
+#    [ -d ${indexDir} ] && {
+#        _failed "index dir is already exist."
+#    }
 
     mkdir -p ${indexDir}/{tmp,L,M,S} ${thumbnailDir}
 
-    echo '<html><body><div id="album" style="display: flex; flex-wrap: wrap">' > ${indexDir}/index.html
+    [ ! -f ${indexDir}/index.html ] && {
+        echo '<html><body><div id="album" style="display: flex; flex-wrap: wrap">' > ${indexDir}/index.html
+    }
 
-    function _getNewFile() {
+    function _getNewFilename() {
         local file=$1
         local exifdate=$(
                     exiftool -time:all -s -S -d %Y%m%d ${file} | \
@@ -20,18 +22,20 @@ function _create_index() {
                         sort | \
                         head -n 1
                 )
-        local to="${tmpDir}/${exifdate}.${file##*.}"
-        if [ ! -f "${to}" ] && [ ! -f "${to}.jpg" ]; then
-            echo ${to}
-        else
-            for i in $(seq 9999); do
-                seqTo="${to%.*}-${i}.${to##*.}"
-                if [ ! -f "${seqTo}" ] && [ ! -f "${seqTo}.jpg" ]; then
-                    echo ${seqTo}
-                    break
-                fi
-            done
-        fi
+        hash=$(md5sum ${file} | cut -d ' ' -f 1)
+        local to="${thumbnailDir}/${exifdate}_${hash}.${file##*.}"
+        echo ${to}
+#        if [ ! -f "${to}" ] && [ ! -f "${to}.jpg" ]; then
+#            echo ${to}
+#        else
+#            for i in $(seq 9999); do
+#                seqTo="${to%.*}-${i}.${to##*.}"
+#                if [ ! -f "${seqTo}" ] && [ ! -f "${seqTo}.jpg" ]; then
+#                    echo ${seqTo}
+#                    break
+#                fi
+#            done
+#        fi
     }
 
     local ext="(JPG|jpg|jpeg|PNG|png|TIFF|TIF|tiff|tif|CR2|NEF|ARW|MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4)"
@@ -40,31 +44,42 @@ function _create_index() {
 
         printf "[$(basename ${file}) => "
 
-        # copy to tmp dir
-        local newFile="$(_getNewFile ${file})"
+        # new filename
+        # photo file: ${tmpDir}/yyyymmdd.ext
+        # movie file: ${tmpDir}/yyyy.mmdd.ext.jpg
 
-        # for movie
+        # ${newFile} = ${thumbnailDir}/${exifdate}_${hash}.${file##*.}
+        local newFile="$(_getNewFilename ${file})"
+
+        [ -f "${newFile}" ] || [ -f "${newFile}.jpg" ] && {
+            printf "skip]\n"
+            continue
+        }
+
+        # for movie file
         if [[ ${file} =~ ^.*\.(MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4)$ ]]; then
+
+            newFile=${newFile}.jpg
 
             # broken check
             set +e
             ffprobe "${file}" > /dev/null 2>&1
             if [ $? -ne 0 ]; then
                 printf "$(basename ${file})] file is broken.\n"
+                echo ${file},$(basename ${newFile}) >> ${indexDir}/broken.txt
                 continue
             fi
             set -e
 
-            # capture thumbnail
-            newFile=${newFile}.jpg
+            # capture thumbnail to ${tmpDir}
             ffmpeg -i ${file} \
-                    -ss 3 \
+                    -ss 0 \
                     -vframes 1 \
                     -f image2 \
-                    -s 240x240 \
+                    -s 480x480 \
                     ${newFile}  > /dev/null 2>&1
 
-        # for picture
+        # for picture file
         else
             cp "${file}" "${newFile}"
         fi
@@ -92,17 +107,30 @@ function _create_index() {
         # create date img
         printf ", ${label}"
         convert -size 100x100 -gravity center -font 'Bookman-Demi' -fill '#fff' -trim \
-            -background 'rgba(0,0,0,0,0)' -pointsize 12 label:"${label}" "${tmpDir}/kazuyo_date_image.png"
+            -background 'rgba(0,0,0,0,0)' -pointsize 12 label:"${label}" "${tmpDir}/date_image.png"
 
         # composite photo
         printf ', composit'
         composite -compose over -gravity southeast -geometry +10+10 \
-            "${tmpDir}/kazuyo_date_image.png" "${tmpDir}/${filename}.crop" "${thumbnailDir}/${filename}"
+            "${tmpDir}/date_image.png" "${tmpDir}/${filename}.crop" "${thumbnailDir}/${filename}"
+
+        # composite play button
+        if [[ ${filename} =~ ^.*\.(MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4).jpg$ ]]; then
+            composite \
+                -compose over \
+                -gravity center \
+                -geometry +0+0 \
+                ${SELF}/images/play-button-60x60.png \
+                "${thumbnailDir}/${filename}" \
+                "${thumbnailDir}/${filename}"
+        fi
 
         # html
         printf ', html'
         echo '<img src="thumbnail/'${filename}'" style="width: 16.6667%">' >> ${indexDir}/index.html
 
+        #clean
+        rm ${tmpDir}/*
         printf ', done\n'
     done
 
@@ -112,14 +140,16 @@ function _create_index() {
     printf 'create montage L ...'
     montage $(find ${thumbnailDir} -type f -name "*.jpg" | sort) -tile 4x4 -geometry +0+0 ${indexDir}/L/index_l.jpg
     printf 'done\n'
+
     printf 'create montage M ...'
     montage $(find ${thumbnailDir} -type f -name "*.jpg" | sort) -tile 6x6 -geometry +0+0 ${indexDir}/M/index_m.jpg
     printf 'done\n'
+
     printf 'create montage S ...'
     montage $(find ${thumbnailDir} -type f -name "*.jpg" | sort) -tile 8x8 -geometry +0+0 ${indexDir}/S/index_s.jpg
     printf 'done\n'
 
     # cleanup
     rm -rf ${tmpDir}
-    echo "all done."
+    _log "all done."
 }
