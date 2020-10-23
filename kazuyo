@@ -137,7 +137,8 @@ function _checkup() {
         # create original.txt
         hash=$(echo ${line} | cut -d ' ' -f 1)
         file=$(echo ${line} | cut -d ' ' -f 2-)
-        echo "${hash},${file}" >> ${ORIG_FILES}
+        mime=$(exiftool -s -S -MIMEType "${file}")
+        echo "${hash},${mime},${file}" >> ${ORIG_FILES}
 
         hash_file=${TMP_DIR}/${hash}.$(basename "${file##*.}")
 
@@ -337,6 +338,10 @@ case $1 in
     kml )
         . ${SELF}/fnc/_export_kml.fnc
         _export_kml
+        ;;
+    fixext )
+        . ${SELF}/fnc/_fix_file_extention.fnc
+        _fix_file_extention
         ;;
     renban )
         . ${SELF}/fnc/_rename_sequencial_filename.fnc
