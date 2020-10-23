@@ -15,19 +15,42 @@ function _create_index() {
     [ ! -d ${indexDir}/lib ] && {
         (
             cd ${indexDir}
-            git clone https://github.com/sachinchoolur/lightgallery.js lib
+            mkdir ${indexDir}/lib
+
+            # lightgallery.js
+            git init
+            git config core.sparsecheckout true
+            {
+                echo "dist"
+                echo "demo/js/lg-video.min.js"
+            } > .git/info/sparse-checkout
+            git remote add origin https://github.com/sachinchoolur/lightgallery.js
+            git pull origin master
+            mv dist/* lib
+            mv demo/js/* lib/js
+            rm -rf .git dist demo
+
+            # lazysizes
+            git init
+            git config core.sparsecheckout true
+            echo "lazysizes.min.js" > .git/info/sparse-checkout
+            git remote add origin https://github.com/aFarkas/lazysizes
+            git pull origin master
+            mkdir -p lib/js
+            mv lazysizes.min.js lib/js
+            rm -rf .git
         )
     }
 
     # export HTML
     [ ! -f ${indexDir}/index.html ] && {
         css="<link type=\"text/css\" rel=\"stylesheet\" href=\"lib/dist/css/lightgallery.min.css\" />"
-        lazy="<script src=\"../lazysizes/lazysizes.min.js\"></script>"
-        lg="<script src=\"lib/dist/js/lightgallery.min.js\"></script>"
-        vp="<script src=\"lib/demo/js/lg-video.min.js\"></script>"
+        lazy="<script src=\"lib/js/lazysizes/lazysizes.min.js\"></script>"
+        lg="<script src=\"lib/js/lightgallery.min.js\"></script>"
+        vp="<script src=\"lib/js/lg-video.min.js\"></script>"
         style="<style>.lg-backdrop.in { opacity: 0.85; }</style>"
         {
-            echo "<html><body style="margin: 0px"><head>${css}${style}</head><body>"
+            echo "<html><body style=\"margin: 0px\"><head>${css}${style}</head><body>"
             echo "<!-- hidden video div -->"
             echo "<div id=\"lightgallery\" style=\"display: flex; flex-wrap: wrap\">"
             echo "<!-- image file -->"
@@ -75,26 +98,36 @@ function _create_index() {
 
             # fuzz photo
             convert "${workDir}/${outFilename}" +page -fuzz 10% -trim "${workDir}/${outFilename}.fuzz"
+#            convert "${workDir}/${outFilename}" -define jpeg:size=240x240 +page -fuzz 10% -trim "${workDir}/${outFilename}.fuzz"
 
         # for picture file
         else
             # fuzz photo
             convert "${inFile}" +page -fuzz 10% -trim "${workDir}/${outFilename}.fuzz"
+#            convert "${inFile}" -define jpeg:size=240x240 +page -fuzz 10% -trim "${workDir}/${outFilename}.fuzz"
         fi
 
         # resize photo
-        convert -resize 240x240^ "${workDir}/${outFilename}.fuzz" "${workDir}/${outFilename}.thumb.resize"
+#        convert -resize 240x240^ "${workDir}/${outFilename}.fuzz" "${workDir}/${outFilename}.thumb.resize"
+        convert -define jpeg:size=240x240 -resize 240x240^ "${workDir}/${outFilename}.fuzz" "${workDir}/${outFilename}.thumb.resize"
 
         # crop photo
         convert "${workDir}/${outFilename}.thumb.resize" -gravity center -crop 240x240+0+0  "${workDir}/${outFilename}.thumb.crop"
 
-        # create date img
-        convert -size 100x100 -gravity center -font 'Bookman-Demi' -fill '#fff' -trim \
-            -background 'rgba(0,0,0,0,0)' -pointsize 12 label:"${label}" "${workDir}/date_image.png"
+        # create date(label) img
+#        convert -size 100x100 -gravity center -font 'Bookman-Demi' -fill '#fff' -trim \
+#            -background 'rgba(0,0,0,0,0)' -pointsize 12 label:"${label}" "${workDir}/date_image.png"
+        [ ! -f "${tmpDir}/${label}.png" ] && {
+            printf "(${label})"
+            convert -size 100x100 -gravity center -font 'Bookman-Demi' -fill '#fff' -trim \
+                -background 'rgba(0,0,0,0,0)' -pointsize 12 label:"${label}" "${tmpDir}/${label}.png"
+        }
 
         # composite photo
+#        composite -compose over -gravity southeast -geometry +10+10 \
+#            "${workDir}/date_image.png" "${workDir}/${outFilename}.thumb.crop" "${thumbnailDir}/${outFilename}"
         composite -compose over -gravity southeast -geometry +10+10 \
-            "${workDir}/date_image.png" "${workDir}/${outFilename}.thumb.crop" "${thumbnailDir}/${outFilename}"
+            "${tmpDir}/${label}.png" "${workDir}/${outFilename}.thumb.crop" "${thumbnailDir}/${outFilename}"
 
         # composite play button
         if [[ ${outFilename} =~ ^.*\.(MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4).jpg$ ]]; then
@@ -111,14 +144,15 @@ function _create_index() {
     # $1: in file
     # $2: out file
     function _create_medium_image() {
-        #local inFile=$1
+#        local inFile=$1
         local inFile=${workDir}/$(basename $2).fuzz
-        convert -resize "1280x720>" "${inFile}" "$2"
+#        convert -resize "1280x720>" "${inFile}" "$2"
+        convert -define jpeg:size="1280x720>" -resize "1280x720>" "${inFile}" "$2"
     }
 
     # work in sub shell
     local ext="(JPG|jpg|jpeg|PNG|png|TIFF|TIF|tiff|tif|CR2|NEF|ARW|MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4)"
-    find -E ${PHOTO_DATA_DIR} -type f -regex "^.*\.${EXT}$" | \
+    find -E ${PHOTO_DATA_DIR} -type f -regex "^.*\.${EXT}$" | sort | \
         while IFS=$'\n' read file; do
 
         # fix ${file}
@@ -136,8 +170,8 @@ function _create_index() {
         printf "[$(basename "${file}") => ${filename:0:20}..] "
 
         #resume
-        [ -f "${thumbnailFile}" ] || [ -f "${thumbnailFile}.jpg" ] || \
-            [ -f "${mediumImgFile}" ] || [ -f "${mediumImgFile}.jpg" ] && {
+        ([ -f "${thumbnailFile}" ] || [ -f "${thumbnailFile}.jpg" ]) && \
+            ([ -f "${mediumImgFile}" ] || [ -f "${mediumImgFile}.jpg" ]) && {
                 printf "skip\n"
                 continue
             }
@@ -158,14 +192,16 @@ function _create_index() {
             set -e
         fi
 
-        local workDir=${tmpDir}/$(basename "${thumbnailFile}")
-        mkdir -p ${workDir}
+        local workDir="${tmpDir}/${filename}"
+        mkdir -p "${workDir}"
 
         _create_thumbnail "${file}" "${thumbnailFile}" "${workDir}"
         printf 'thumbnail'
 
         _create_medium_image "${file}" "${mediumImgFile}" "${workDir}"
         printf ', medium'
+
+        rm -rf "${workDir}"
 
         # html
         if [[ "${file}" =~ ^.*\.(MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4)$ ]]; then
@@ -194,7 +230,6 @@ function _create_index() {
         printf ', html'
 
         #clean
-        rm -rf ${workDir}
         printf ', done\n'
     done
 
