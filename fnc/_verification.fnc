@@ -22,6 +22,8 @@ function _verify_result() {
         exif_date_status=$(_compaier_line_count $(_count ${EXIF_DATE_DUPLICATE}) 0)
     }
 
+    local mime_type_status=''
+
     local mv_list_status=$( _compaier_line_count \
         $(_count ${MV_LIST_UNIQUE}) ${ori_uni})
     [ ${mv_list_status} = "OK" ] && {
@@ -66,6 +68,9 @@ function _show_tidy_result() {
     printf "%8d files in unique list.\n" $(_count ${EXIF_DATE_UNIQUE})
     printf "%8d files in duplicate list.\n" $(_count ${EXIF_DATE_DUPLICATE})
     echo ""
+    echo "[MIME Type (n/a)]"
+    printf "%8d %s\n" $(cat ${REPORT_DIR}/original.txt | cut -d ',' -f 3 | sort | uniq -c | sort -r)
+    echo ""
     echo "[mv List (${mv_list_status})]"
     printf "%8d files in unique list.\n" $(_count ${MV_LIST_UNIQUE})
     printf "%8d files in duplicate list.\n" $(_count ${MV_LIST_DUPLICATE})
@@ -79,4 +84,5 @@ function _show_tidy_result() {
             | awk '{ if( $1 != 1 ) printf "%6d files has %s\n", $1, $2 }'
         echo " (one file has moved into unique list and others into duplicate list.)"
     }
+    echo ""
 }

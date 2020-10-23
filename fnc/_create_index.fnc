@@ -90,33 +90,25 @@ function _create_index() {
         if [[ "${inFile}" =~ ^.*\.(MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4)$ ]]; then
 
             # capture thumbnail to ${tmpDir}
-            ffmpeg -i "${inFile}" \
-                    -ss 0 \
-                    -vframes 1 \
-                    -f image2 \
+            ffmpeg -i "${inFile}" -ss 0 -vframes 1 -f image2 \
                     ${workDir}/${outFilename}  > /dev/null 2>&1
 
             # fuzz photo
             convert "${workDir}/${outFilename}" +page -fuzz 10% -trim "${workDir}/${outFilename}.fuzz"
-#            convert "${workDir}/${outFilename}" -define jpeg:size=240x240 +page -fuzz 10% -trim "${workDir}/${outFilename}.fuzz"
 
         # for picture file
         else
             # fuzz photo
             convert "${inFile}" +page -fuzz 10% -trim "${workDir}/${outFilename}.fuzz"
-#            convert "${inFile}" -define jpeg:size=240x240 +page -fuzz 10% -trim "${workDir}/${outFilename}.fuzz"
         fi
 
         # resize photo
-#        convert -resize 240x240^ "${workDir}/${outFilename}.fuzz" "${workDir}/${outFilename}.thumb.resize"
         convert -define jpeg:size=240x240 -resize 240x240^ "${workDir}/${outFilename}.fuzz" "${workDir}/${outFilename}.thumb.resize"
 
         # crop photo
         convert "${workDir}/${outFilename}.thumb.resize" -gravity center -crop 240x240+0+0  "${workDir}/${outFilename}.thumb.crop"
 
         # create date(label) img
-#        convert -size 100x100 -gravity center -font 'Bookman-Demi' -fill '#fff' -trim \
-#            -background 'rgba(0,0,0,0,0)' -pointsize 12 label:"${label}" "${workDir}/date_image.png"
         [ ! -f "${tmpDir}/${label}.png" ] && {
             printf "(${label})"
             convert -size 100x100 -gravity center -font 'Bookman-Demi' -fill '#fff' -trim \
@@ -124,8 +116,6 @@ function _create_index() {
         }
 
         # composite photo
-#        composite -compose over -gravity southeast -geometry +10+10 \
-#            "${workDir}/date_image.png" "${workDir}/${outFilename}.thumb.crop" "${thumbnailDir}/${outFilename}"
         composite -compose over -gravity southeast -geometry +10+10 \
             "${tmpDir}/${label}.png" "${workDir}/${outFilename}.thumb.crop" "${thumbnailDir}/${outFilename}"
 
@@ -228,8 +218,6 @@ function _create_index() {
             gsed -i -e "/^<\!\-\- image file \-\->$/i ${imgTag}" ${indexDir}/index.html
         fi
         printf ', html'
-
-        #clean
         printf ', done\n'
     done
 

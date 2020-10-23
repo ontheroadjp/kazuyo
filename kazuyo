@@ -134,61 +134,23 @@ function _checkup() {
     find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 \
         | xargs -0 md5sum | while IFS=$'\n' read line; do
 
+
         # create original.txt
         hash=$(echo ${line} | cut -d ' ' -f 1)
         file=$(echo ${line} | cut -d ' ' -f 2-)
-        mime=$(exiftool -s -S -MIMEType "${file}")
-        echo "${hash},${mime},${file}" >> ${ORIG_FILES}
 
-        hash_file=${TMP_DIR}/${hash}.$(basename "${file##*.}")
+        printf "[$(basename "${file}")] "
 
-        # copy unique to ${BASE_DIR} as hash_file
-        [ ! -f "${hash_file}" ] && {
-            cp "${file}" "${hash_file}"
-            echo "${hash}","${file}","${hash_file}" >> ${HASH_FILES_UNIQUE}
-
-        # copy duplicate to ${DUPLICATE_DIR}
-        } || {
-            for i in $(seq 999); do
-                fixed_dir=${DUPLICATE_DIR}/${hash}_$(printf %03d ${i})
-                [ ! -d ${fixed_dir} ]  && {
-                    mkdir "${fixed_dir}"
-                    cp "${file}" "${fixed_dir}/$(basename ${file})"
-                    echo "${file}","${fixed_dir}/$(basename ${file})" >> ${MV_LIST_DUPLICATE}
-                    break;
-                }
-            done
-        }
-    done
-
-    # $1: all list
-    # $2: unique list
-    # $3: duplicate list
-    function _divide_file_list() {
-        cat $1 | sort | awk -v unique=$2 -v duplicate=$3 \
-                        'BEGIN { FS=","; prev_hash="" } {
-                            if( prev_hash != $1 ) {
-                                print $0 >> unique
-                            } else {
-                                print $0 >> duplicate
-                            }
-                            prev_hash=$1
-                        }'
-    }
-
-    # divide original.txt
-    _divide_file_list ${ORIG_FILES} ${ORIG_FILES_UNIQUE} ${ORIG_FILES_DUPLICATE}
-
-    function _guess_photo_date() {
+#        mime=$(exiftool -s -S -MIMEType "${file}")
         ext_option=$(echo ${EXT} | sed 's/(/-ext /g' | sed 's/)//g' | sed 's/|/ -ext /g')
-        exiftool \
+        exif=$(exiftool \
             -lang ja \
-            ${TMP_DIR} \
+            ${file} \
             ${ext_option} \
             -r \
             -i dist \
             -d %Y%m%d%H%M%S \
-            -p ${SELF}/lib/exifdate.fmt \
+            -p ${SELF}/lib/exif.fmt \
             -fast2 \
             -m \
             | awk \
@@ -212,13 +174,102 @@ function _checkup() {
                 sub(/\..*$/,"",$1)
                 print $1, tag, min_v, $2, $3, $4, $5
             }'
-    }
+        )
 
-    # create exif_date.txt
-    _log "create exif date file."
-    _guess_photo_date >> ${EXIF_DATE}
-    _divide_file_list ${EXIF_DATE} ${EXIF_DATE_UNIQUE} ${EXIF_DATE_DUPLICATE}
+        printf "${exif}\n"
 
+#        echo "${hash},${mime},${file}" >> ${ORIG_FILES}
+        echo "${hash},${file},${exif}" >> ${ORIG_FILES}
+
+#        hash_file=${TMP_DIR}/${hash}.$(basename "${file##*.}")
+#
+#        # copy unique to ${BASE_DIR} as hash_file
+#        [ ! -f "${hash_file}" ] && {
+#            cp "${file}" "${hash_file}"
+#            echo "${hash}","${file}","${hash_file}" >> ${HASH_FILES_UNIQUE}
+#
+#        # copy duplicate to ${DUPLICATE_DIR}
+#        } || {
+#            for i in $(seq 999); do
+#                fixed_dir=${DUPLICATE_DIR}/${hash}_$(printf %03d ${i})
+#                [ ! -d ${fixed_dir} ]  && {
+#                    mkdir "${fixed_dir}"
+#                    cp "${file}" "${fixed_dir}/$(basename ${file})"
+#                    echo "${file}","${fixed_dir}/$(basename ${file})" >> ${MV_LIST_DUPLICATE}
+#                    break;
+#                }
+#            done
+#        }
+    done
+
+#    # $1: all list
+#    # $2: unique list
+#    # $3: duplicate list
+#    function _divide_file_list() {
+#        cat $1 | sort | awk -v unique=$2 -v duplicate=$3 \
+#                        'BEGIN { FS=","; prev_hash="" } {
+#                            if( prev_hash != $1 ) {
+#                                print $0 >> unique
+#                            } else {
+#                                print $0 >> duplicate
+#                            }
+#                            prev_hash=$1
+#                        }'
+#    }
+#
+#    # divide original.txt
+#    _divide_file_list ${ORIG_FILES} ${ORIG_FILES_UNIQUE} ${ORIG_FILES_DUPLICATE}
+
+    cat ${ORIG_FILES} | sort | awk \
+            -v unique=${ORIG_FILES_UNIQUE} -v duplicate=${ORIG_FILES_DUPLICATE} \
+                    'BEGIN { FS=","; prev_hash="" } {
+                        if( prev_hash != $1 ) {
+                            print $0 >> unique
+                        } else {
+                            print $0 >> duplicate
+                        }
+                        prev_hash=$1
+                    }'
+
+#    function _guess_photo_date() {
+#        ext_option=$(echo ${EXT} | sed 's/(/-ext /g' | sed 's/)//g' | sed 's/|/ -ext /g')
+#        exiftool \
+#            -lang ja \
+#            ${TMP_DIR} \
+#            ${ext_option} \
+#            -r \
+#            -i dist \
+#            -d %Y%m%d%H%M%S \
+#            -p ${SELF}/lib/exifdate.fmt \
+#            -fast2 \
+#            -m \
+#            | awk \
+#            'BEGIN { FS=","; OFS="," } {
+#                min_v = 29991231235959
+#                if ( $2 != "" && $2 != "0000:00:00 00:00:00" && min_v > $2 ) {
+#                    tag = "DateTimeOriginal"
+#                    min_v = $2
+#                } else if ( $3 != "" && $3 != "0000:00:00 00:00:00" && min_v > $3 ) {
+#                    tag = "CreateDate"
+#                    min_v = $3
+#                } else if ( $4 != "" && $4 != "0000:00:00 00:00:00" && min_v > $4 ) {
+#                    tag = "ModifyDate"
+#                    min_v = $4
+#                } else if ( $5 != "" && $5 != "0000:00:00 00:00:00" && min_v > $5 ) {
+#                    tag = "FileModifyDate"
+#                    min_v = $5
+#                } else {
+#                    min_v = "none"
+#                }
+#                sub(/\..*$/,"",$1)
+#                print $1, tag, min_v, $2, $3, $4, $5
+#            }'
+#    }
+#
+#    # create exif_date.txt
+#    _log "create exif date file."
+#    _guess_photo_date >> ${EXIF_DATE}
+#    _divide_file_list ${EXIF_DATE} ${EXIF_DATE_UNIQUE} ${EXIF_DATE_DUPLICATE}
 }
 
 #function _verify_checkup() {
