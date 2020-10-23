@@ -11,26 +11,18 @@ function _set_constant() {
 
     # directory
     readonly BASE_DIR=$(echo $2 | sed -e 's:\/$::') # remove last '/'
-    readonly TMP_DIR="${BASE_DIR}/tmp"
     readonly DIST_DIR="${BASE_DIR}/dist"
     readonly DATA_DIR="${DIST_DIR}/data"
-    readonly REPORT_DIR="${DIST_DIR}/report"
     readonly DATA_DUPLICATE_DIR="${DIST_DIR}/data_duplicate"
+    readonly REPORT_DIR="${DIST_DIR}/report"
+    readonly TMP_DIR="${DIST_DIR}/tmp"
 
     # original file
     readonly ORIG_FILES=${REPORT_DIR}/original.txt
     readonly ORIG_FILES_UNIQUE=${REPORT_DIR}/original_unique.txt
     readonly ORIG_FILES_DUPLICATE=${REPORT_DIR}/original_duplicate.txt
 
-    # hash file
-    readonly HASH_FILES_UNIQUE=${REPORT_DIR}/hash_file_unique.txt
-
-    # exif date
-    readonly EXIF_DATE=${REPORT_DIR}/exif_date.txt
-    readonly EXIF_DATE_UNIQUE=${REPORT_DIR}/exif_date_unique.txt
-    readonly EXIF_DATE_DUPLICATE=${REPORT_DIR}/exif_date_duplicate.txt
-
-    # mv list
+    # mv result
     readonly MV_RESULT_UNIQUE=${REPORT_DIR}/mv_result_unique.txt
     readonly MV_RESULT_DUPLICATE=${REPORT_DIR}/mv_result_duplicate.txt
 
@@ -40,132 +32,36 @@ function _set_constant() {
 
 function _rebuild_dist_dir() {
     [ -d ${DIST_DIR} ] && rm -rf ${DIST_DIR}
-    [ -d ${TMP_DIR} ] && rm -rf ${TMP_DIR}
-    mkdir -p ${TMP_DIR} ${DATA_DIR} ${REPORT_DIR} ${DATA_DUPLICATE_DIR}
+    mkdir -p ${DATA_DIR} ${DATA_DUPLICATE_DIR} ${REPORT_DIR}
     touch ${ORIG_FILES} ${ORIG_FILES_UNIQUE} ${ORIG_FILES_DUPLICATE}
-    touch ${HASH_FILES_UNIQUE};
-    touch ${EXIF_DATE} ${EXIF_DATE_UNIQUE} ${EXIF_DATE_DUPLICATE}
     touch ${MV_RESULT_UNIQUE} ${MV_RESULT_DUPLICATE}
 }
 
 function _checkup() {
 
-    _log "clean up dist dir."
     _rebuild_dist_dir
 
-    local count=0
-    local count_all=$(find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" | wc -l)
+#    local count=0
+#    local count_all=$(find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" | wc -l)
 
-    # fetch all photo files in base/ including sub dir, but excluding dist/
-    _log "create original file."
-    find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 \
-        | xargs -0 md5sum | while IFS=$'\n' read line; do
-
-
-        # create original.txt
-        hash=$(echo ${line} | cut -d ' ' -f 1)
-        file=$(echo ${line} | cut -d ' ' -f 2-)
-
-        printf "[$(basename "${file}")] "
-
-        ext_option=$(echo ${EXT} | sed 's/(/-ext /g' | sed 's/)//g' | sed 's/|/ -ext /g')
-        exif=$(exiftool \
-            -lang ja \
-            ${file} \
-            ${ext_option} \
-            -r \
-            -i dist \
-            -d %Y%m%d%H%M%S \
-            -p ${SELF}/lib/exif.fmt \
-            -fast2 \
-            -m \
-            | awk \
-            'BEGIN { FS=","; OFS="," } {
-                min_v = 29991231235959
-                if ( $2 != "" && $2 != "0000:00:00 00:00:00" && min_v > $2 ) {
-                    tag = "DateTimeOriginal"
-                    min_v = $2
-                } else if ( $3 != "" && $3 != "0000:00:00 00:00:00" && min_v > $3 ) {
-                    tag = "CreateDate"
-                    min_v = $3
-                } else if ( $4 != "" && $4 != "0000:00:00 00:00:00" && min_v > $4 ) {
-                    tag = "ModifyDate"
-                    min_v = $4
-                } else if ( $5 != "" && $5 != "0000:00:00 00:00:00" && min_v > $5 ) {
-                    tag = "FileModifyDate"
-                    min_v = $5
-                } else {
-                    min_v = "none"
-                }
-                sub(/\..*$/,"",$1)
-                print $1, tag, min_v, $2, $3, $4, $5
-            }'
-        )
-
-        printf "${exif}\n"
-
-        echo "${hash},${file},${exif}" >> ${ORIG_FILES}
-
-#        hash_file=${TMP_DIR}/${hash}.$(basename "${file##*.}")
+#    # fetch all photo files in base/ including sub dir, but excluding dist/
+#    _log "create original file."
+#    find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 \
+#        | xargs -0 md5sum | while IFS=$'\n' read line; do
 #
-#        # copy unique to ${BASE_DIR} as hash_file
-#        [ ! -f "${hash_file}" ] && {
-#            cp "${file}" "${hash_file}"
-#            echo "${hash}","${file}","${hash_file}" >> ${HASH_FILES_UNIQUE}
+#        # create original.txt
+#        hash=$(echo ${line} | cut -d ' ' -f 1)
+#        file=$(echo ${line} | cut -d ' ' -f 2-)
 #
-#        # copy duplicate to ${DATA_DUPLICATE_DIR}
-#        } || {
-#            for i in $(seq 999); do
-#                fixed_dir=${DATA_DUPLICATE_DIR}/${hash}_$(printf %03d ${i})
-#                [ ! -d ${fixed_dir} ]  && {
-#                    mkdir "${fixed_dir}"
-#                    cp "${file}" "${fixed_dir}/$(basename ${file})"
-#                    echo "${file}","${fixed_dir}/$(basename ${file})" >> ${MV_LIST_DUPLICATE}
-#                    break;
-#                }
-#            done
-#        }
-    done
-
-#    # $1: all list
-#    # $2: unique list
-#    # $3: duplicate list
-#    function _divide_file_list() {
-#        cat $1 | sort | awk -v unique=$2 -v duplicate=$3 \
-#                        'BEGIN { FS=","; prev_hash="" } {
-#                            if( prev_hash != $1 ) {
-#                                print $0 >> unique
-#                            } else {
-#                                print $0 >> duplicate
-#                            }
-#                            prev_hash=$1
-#                        }'
-#    }
-#
-#    # divide original.txt
-#    _divide_file_list ${ORIG_FILES} ${ORIG_FILES_UNIQUE} ${ORIG_FILES_DUPLICATE}
-
-    cat ${ORIG_FILES} | sort | awk \
-            -v unique=${ORIG_FILES_UNIQUE} -v duplicate=${ORIG_FILES_DUPLICATE} \
-                    'BEGIN { FS=","; prev_hash="" } {
-                        if( prev_hash != $1 ) {
-                            print $0 >> unique
-                        } else {
-                            print $0 >> duplicate
-                        }
-                        prev_hash=$1
-                    }'
-
-#    function _guess_photo_date() {
 #        ext_option=$(echo ${EXT} | sed 's/(/-ext /g' | sed 's/)//g' | sed 's/|/ -ext /g')
-#        exiftool \
+#        exif=$(exiftool \
 #            -lang ja \
-#            ${TMP_DIR} \
+#            ${file} \
 #            ${ext_option} \
 #            -r \
 #            -i dist \
 #            -d %Y%m%d%H%M%S \
-#            -p ${SELF}/lib/exifdate.fmt \
+#            -p ${SELF}/lib/exif.fmt \
 #            -fast2 \
 #            -m \
 #            | awk \
@@ -189,12 +85,89 @@ function _checkup() {
 #                sub(/\..*$/,"",$1)
 #                print $1, tag, min_v, $2, $3, $4, $5
 #            }'
-#    }
+#        )
 #
-#    # create exif_date.txt
-#    _log "create exif date file."
-#    _guess_photo_date >> ${EXIF_DATE}
-#    _divide_file_list ${EXIF_DATE} ${EXIF_DATE_UNIQUE} ${EXIF_DATE_DUPLICATE}
+#        echo "${hash},${file/${BASE_DIR}\//},${exif}" | tee -a ${ORIG_FILES}
+#    done
+
+#    find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 \
+#        | xargs -0 md5sum | while IFS=$'\n' read line; do
+#        echo "${hash},${file/${BASE_DIR}\//},${exif}" | tee -a ${ORIG_FILES}
+#    done
+
+    local tmpDir="${TMP_DIR}/checkup"
+    local findText=${tmpDir}/find.txt
+    local hashText=${tmpDir}/hash.txt
+    local exifText=${tmpDir}/exif.txt
+    mkdir -p ${tmpDir}
+#    (
+#        IFS=$'\n'
+#        md5sum $(cat ${findText}) | awk \
+#            'BEGIN {} {
+#                printf $1
+#                printf ","
+#                $1=""; print
+#            }' | sed 's/\(^.\{32\}\), /\1,/g' | sed "s:${BASE_DIR}/::g" > ${hashText}
+#    )
+
+    # export find.txt
+    find -E ${BASE_DIR} -type d -name dist -prune -o \
+        -type f -regex "^.*\.${EXT}$" | sort | sed '1d' > ${findText}
+
+    # export hash.txt
+#    find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 | \
+    cat ${findText} | \
+        xargs -n 3000 md5sum | \
+        awk 'BEGIN {} {
+                printf $1
+                printf ","
+                $1=""; print
+            }' | \
+        sed 's/\(^.\{32\}\), /\1,/g' | \
+        sed "s:${BASE_DIR}/::g" > ${hashText}
+
+    # export exif.txt
+#    ext_option=$(echo ${EXT} | sed 's/(/-ext /g' | sed 's/)//g' | sed 's/|/ -ext /g')
+#    exiftool ${BASE_DIR} -r ${ext_option} \
+    cat ${findText} | \
+        xargs -n 3000 exiftool -d %Y%m%d%H%M%S -p ${SELF}/lib/exif.fmt -fast2 -m | \
+        awk 'BEGIN { FS=","; OFS="," } {
+                min_v = 29991231235959
+                if ( $2 != "" && $2 != "0000:00:00 00:00:00" && min_v > $2 ) {
+                    tag = "DateTimeOriginal"
+                    min_v = $2
+                } else if ( $3 != "" && $3 != "0000:00:00 00:00:00" && min_v > $3 ) {
+                    tag = "CreateDate"
+                    min_v = $3
+                } else if ( $4 != "" && $4 != "0000:00:00 00:00:00" && min_v > $4 ) {
+                    tag = "ModifyDate"
+                    min_v = $4
+                } else if ( $5 != "" && $5 != "0000:00:00 00:00:00" && min_v > $5 ) {
+                    tag = "FileModifyDate"
+                    min_v = $5
+                } else {
+                    min_v = "none"
+                }
+                #sub(/\..*$/,"",$1)
+                print $1, tag, min_v, $2, $3, $4, $5
+        }' > ${exifText}
+
+    # merge hash.txt and exif.txt
+    [ $(_compaier_line_count $(_count ${hashText}) $(_count ${exifText})) = "OK" ] && {
+        paste -d, ${hashText} ${exifText} >> ${ORIG_FILES}
+    } || _failed "hash.txt and exif.txt are miss match. hash: $(_count ${hashText}), exif: $(_count ${exifText})"
+
+    # divide to unique and duplicate
+    cat ${ORIG_FILES} | sort | awk \
+            -v unique=${ORIG_FILES_UNIQUE} -v duplicate=${ORIG_FILES_DUPLICATE} \
+                    'BEGIN { FS=","; prev_hash="" } {
+                        if( prev_hash != $1 ) {
+                            print $0 >> unique
+                        } else {
+                            print $0 >> duplicate
+                        }
+                        prev_hash=$1
+                    }'
 }
 
 function _tidy_photo() {
@@ -202,9 +175,9 @@ function _tidy_photo() {
     # $1: base dir
     # $2: datetime (yyyymmdd)
     function _make_date_dir() {
-        to_dir=$1/${2:0:4}年/${2:4:2}月/${2:0:8}
-        mkdir -p ${to_dir}
-        echo ${to_dir}
+        dateDir=$1/${2:0:4}年/${2:4:2}月/${2:0:8}
+        mkdir -p ${dateDir}
+        echo ${dateDir}
     }
 
     # $1: from
@@ -214,56 +187,42 @@ function _tidy_photo() {
         if [ ! -e "$2" ]; then
 #            mv "$1" "$2"
             cp "$1" "$2"
-            file=$(basename $1)
-            echo "${file%.*},$1,$2"
+            echo "$1","$2"
         else
             for i in $(seq 999); do
                 fixed=${2%.*}_$(printf %03d ${i}).${2##*.}
                 [ ! -e ${fixed} ]  && {
 #                    mv "$1" "${fixed}"
                     cp "$1" "${fixed}"
-                    echo "$1,${fixed}"
+                    echo "$1","${fixed}"
                     break;
                 }
             done
         fi
     }
 
-    # Move file to date dir (unique)
-#    cat ${HASH_FILES_UNIQUE} | while IFS=$'\n' read line; do
+    # Move file (unique)
     cat ${ORIG_FILES_UNIQUE} | while IFS=$'\n' read line; do
         hash=$(echo ${line} | cut -d ',' -f 1)
-        origFile=$(echo ${line} | cut -d ',' -f 2)
+        origFile=${BASE_DIR}/$(echo ${line} | cut -d ',' -f 2)
         dateTime=$(echo ${line} | cut -d ',' -f 5)
-#        hash_file=$(echo ${line} | cut -d ',' -f 3)
 
         to=$(_make_date_dir ${DATA_DIR} ${dateTime:0:8})/$(basename "${origFile}")
-        _move_file "${origFile}" "${to}" >> ${MV_RESULT_UNIQUE}
-        printf "[$(basename ${origFile})] unique to ${dateTime:0:8}\n"
+        _move_file "${origFile}" "${to}" | sed "s:${BASE_DIR}/::g" >> ${MV_RESULT_UNIQUE}
+        printf "[$(basename "${origFile}")] unique to ${dateTime:0:8}\n"
     done
 
-    # Move file to date dir (duplicate)
+    # Move file (duplicate)
     cat ${ORIG_FILES_DUPLICATE} | while IFS=$'\n' read line; do
         hash=$(echo ${line} | cut -d ',' -f 1)
-        origFile=$(echo ${line} | cut -d ',' -f 2)
+        origFile=${BASE_DIR}/$(echo ${line} | cut -d ',' -f 2)
         dateTime=$(echo ${line} | cut -d ',' -f 5)
 
         to=${DATA_DUPLICATE_DIR}/$(basename "${origFile}")
-        _move_file "${origFile}" "${to}" >> ${MV_RESULT_DUPLICATE}
-        printf "[$(basename ${origFile})] duplicate as $(basename ${to})\n"
+        _move_file "${origFile}" "${to}" | sed "s:${BASE_DIR}/::g" >> ${MV_RESULT_DUPLICATE}
+        printf "[$(basename "${origFile}")] duplicate as $(basename "${to}")\n"
     done
-
-#    if [ $(find ${TMP_DIR} | wc -l) -eq 1 ]; then
-#        rm -rf ${TMP_DIR}
-#    else
-#        _failed "err moving file has not been done."
-#    fi
 }
-
-#function _verify_tidy() {
-#    local st=$(_verify_result)
-#    [ ${st} = "OK,OK,OK,OK" ]
-#}
 
 function _param_check() {
     if [ $# -ne 2 ] || [ ! -d "$2" ]; then
@@ -307,9 +266,13 @@ case $1 in
         . ${SELF}/fnc/_export_kml.fnc
         _export_kml
         ;;
-    fixext )
-        . ${SELF}/fnc/_fix_file_extention.fnc
-        _fix_file_extention
+    mime2ext )
+        [ ! -f ${ORIG_FILES} ] && {
+            _checkup $@
+            [ $(_verify_checkup) -ne 0 ] && _failed "checkup() failed"
+        }
+        . ${SELF}/fnc/_mime2ext.fnc
+        _mime2ext
         ;;
     renban )
         . ${SELF}/fnc/_rename_sequencial_filename.fnc
@@ -322,6 +285,8 @@ case $1 in
         echo "[${SCRIPT_NAME}] bad argument"
         exit 1
 esac
+
+[ -d ${TMP_DIR} ] && rm -rf ${TMP_DIR}
 echo "[${SCRIPT_NAME}] all done"
 
 exit 0

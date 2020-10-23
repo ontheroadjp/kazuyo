@@ -1,15 +1,9 @@
 
 
-function _fix_file_extention() {
-    cat ${REPORT_DIR}/original.txt | cut -d ',' -f 2 | sort | uniq -c | sort -r
-
-#    find -E ${PHOTO_DATA_DIR} -type f -regex "^.*\.${EXT}$" | sort | \
-#        while IFS=$'\n' read file; do
-#
-#    done
+function _mime2ext() {
 
     # $1: MIME type
-    function _getCorrectFileExtention() {
+    function _getMimeExt() {
         case $1 in
             'image/bmp' ) echo "bmp" ;;
             'image/fif' ) echo "fif" ;;
@@ -61,15 +55,30 @@ function _fix_file_extention() {
         esac
     }
 
-    cat ${REPORT_DIR}/original.txt | sort | while read line; do
-        file=$(echo ${line} | cut -d ',' -f 3)
+    [ -f "${REPORT_DIR}/mime2ext.txt" ] && rm ${REPORT_DIR}/mime2ext.txt
+
+    STASH_IFS=${IFS}; IFS=$'\n'
+    local isProcess=false
+    for line in $(cat ${ORIG_FILES} | cut -d, -f 2,3); do
+        file=${line%,*}
         ext=${file##*.}
-        mime=$(echo ${line} | cut -d ',' -f 2)
-        correctExt=$(_getCorrectFileExtention ${mime})
-        [ ${correctExt} = 'unknown' ] && _failed 'unknown ext: ${mime}'
-        [ ${correctExt} != ${ext} ] && {
-            echo "$(basename ${file}) - ${ext} - ${correctExt}"
+        mime=${line#*,}
+
+        [ -z ${mime} ] && continue
+
+        mimeExt=$(_getMimeExt "${mime}")
+        [ ${mimeExt} = 'unknown' ] && _failed "unknown ext: ${file} ${mime}"
+
+        [ ${mimeExt} != ${ext} ] && {
+            fixedFile=${file%.*}.${mimeExt}
+#            mv ${BASE_DIR}/${file} ${BASE_DIR}/${fixedFile}
+            echo "${file},${mime},${mimeExt},${fixedFile}" >> ${REPORT_DIR}/mime2ext.txt
+            isProcess=true
         }
     done
+    IFS=${STASH_IFS}
+
+    if ! ${isProcess}; then echo "no file processd" > ${REPORT_DIR}/mime2ext.txt; fi
+    _log $(cat ${REPORT_DIR}/mime2ext.txt)
 }
 

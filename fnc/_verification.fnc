@@ -72,9 +72,9 @@ function _show_tidy_result() {
 #    printf "%8d files in duplicate list.\n" $(_count ${EXIF_DATE_DUPLICATE})
 #    echo ""
     echo "[MIME Type (n/a)]"
-    printf "%8d %s\n" $(cat ${REPORT_DIR}/original.txt | cut -d ',' -f 3 | sort | uniq -c | sort -r)
+    printf "%8d %s\n" $(cat ${ORIG_FILES} | cut -d ',' -f 3 | sort | uniq -c | sort -r)
     echo ""
-    echo "[mv Result (${mvResultStatus})]"
+    echo "[mv/cp Result (${mvResultStatus})]"
     printf "%8d files in unique list.\n" $(_count ${MV_RESULT_UNIQUE})
     printf "%8d files in duplicate list.\n" $(_count ${MV_RESULT_DUPLICATE})
     [ $(cat ${ORIG_FILES_DUPLICATE} | wc -l) -ne 0 ] && {
