@@ -7,13 +7,14 @@ function _set_constant() {
     # script
     readonly SELF=$(cd $(dirname $0); pwd)
     readonly SCRIPT_NAME="TIDY_PHOTO"
-    readonly VERSION="0.8.1"
+    readonly VERSION="0.8.2"
 
     # directory
     readonly BASE_DIR=$(echo $2 | sed -e 's:\/$::') # remove last '/'
     readonly DIST_DIR="${BASE_DIR}/dist"
     readonly DATA_DIR="${DIST_DIR}/data"
     readonly DATA_DUPLICATE_DIR="${DIST_DIR}/data_duplicate"
+    readonly DATA_BROKEN_DIR="${DIST_DIR}/data_broken"
     readonly REPORT_DIR="${DIST_DIR}/report"
     readonly TMP_DIR="${DIST_DIR}/tmp"
 
@@ -21,121 +22,51 @@ function _set_constant() {
     readonly ORIG_FILES=${REPORT_DIR}/original.txt
     readonly ORIG_FILES_UNIQUE=${REPORT_DIR}/original_unique.txt
     readonly ORIG_FILES_DUPLICATE=${REPORT_DIR}/original_duplicate.txt
+    readonly ORIG_FILES_BROKEN=${REPORT_DIR}/original_broken.txt
 
     # mv result
     readonly MV_RESULT_UNIQUE=${REPORT_DIR}/mv_result_unique.txt
     readonly MV_RESULT_DUPLICATE=${REPORT_DIR}/mv_result_duplicate.txt
+    readonly MV_RESULT_BROKEN=${REPORT_DIR}/mv_result_broken.txt
 
     # target file type
     readonly EXT="(JPG|jpg|jpeg|PNG|png|TIFF|TIF|tiff|tif|CR2|NEF|ARW|MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4)"
 }
 
 function _rebuild_dist_dir() {
-    [ -d ${DIST_DIR} ] && rm -rf ${DIST_DIR}
-    mkdir -p ${DATA_DIR} ${DATA_DUPLICATE_DIR} ${REPORT_DIR}
-    touch ${ORIG_FILES} ${ORIG_FILES_UNIQUE} ${ORIG_FILES_DUPLICATE}
-    touch ${MV_RESULT_UNIQUE} ${MV_RESULT_DUPLICATE}
+    [ -d ${DIST_DIR} ] && {
+        rm -rf ${DIST_DIR}/{data,data_duplicate,data_broken,report,tmp}
+    }
+    mkdir -p ${DATA_DIR} ${DATA_DUPLICATE_DIR} ${DATA_BROKEN_DIR} ${REPORT_DIR}
+    touch ${ORIG_FILES} ${ORIG_FILES_UNIQUE} ${ORIG_FILES_DUPLICATE} ${ORIG_FILES_BROKEN}
+    touch ${MV_RESULT_UNIQUE} ${MV_RESULT_DUPLICATE} ${MV_RESULT_BROKEN}
 }
 
 function _checkup() {
 
     _rebuild_dist_dir
 
-#    local count=0
-#    local count_all=$(find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" | wc -l)
-
-#    # fetch all photo files in base/ including sub dir, but excluding dist/
-#    _log "create original file."
-#    find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 \
-#        | xargs -0 md5sum | while IFS=$'\n' read line; do
-#
-#        # create original.txt
-#        hash=$(echo ${line} | cut -d ' ' -f 1)
-#        file=$(echo ${line} | cut -d ' ' -f 2-)
-#
-#        ext_option=$(echo ${EXT} | sed 's/(/-ext /g' | sed 's/)//g' | sed 's/|/ -ext /g')
-#        exif=$(exiftool \
-#            -lang ja \
-#            ${file} \
-#            ${ext_option} \
-#            -r \
-#            -i dist \
-#            -d %Y%m%d%H%M%S \
-#            -p ${SELF}/lib/exif.fmt \
-#            -fast2 \
-#            -m \
-#            | awk \
-#            'BEGIN { FS=","; OFS="," } {
-#                min_v = 29991231235959
-#                if ( $2 != "" && $2 != "0000:00:00 00:00:00" && min_v > $2 ) {
-#                    tag = "DateTimeOriginal"
-#                    min_v = $2
-#                } else if ( $3 != "" && $3 != "0000:00:00 00:00:00" && min_v > $3 ) {
-#                    tag = "CreateDate"
-#                    min_v = $3
-#                } else if ( $4 != "" && $4 != "0000:00:00 00:00:00" && min_v > $4 ) {
-#                    tag = "ModifyDate"
-#                    min_v = $4
-#                } else if ( $5 != "" && $5 != "0000:00:00 00:00:00" && min_v > $5 ) {
-#                    tag = "FileModifyDate"
-#                    min_v = $5
-#                } else {
-#                    min_v = "none"
-#                }
-#                sub(/\..*$/,"",$1)
-#                print $1, tag, min_v, $2, $3, $4, $5
-#            }'
-#        )
-#
-#        echo "${hash},${file/${BASE_DIR}\//},${exif}" | tee -a ${ORIG_FILES}
-#    done
-
-#    find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 \
-#        | xargs -0 md5sum | while IFS=$'\n' read line; do
-#        echo "${hash},${file/${BASE_DIR}\//},${exif}" | tee -a ${ORIG_FILES}
-#    done
-
     local tmpDir="${TMP_DIR}/checkup"
-    local findText=${tmpDir}/find.txt
     local hashText=${tmpDir}/hash.txt
     local exifText=${tmpDir}/exif.txt
     mkdir -p ${tmpDir}
-#    (
-#        IFS=$'\n'
-#        md5sum $(cat ${findText}) | awk \
-#            'BEGIN {} {
-#                printf $1
-#                printf ","
-#                $1=""; print
-#            }' | sed 's/\(^.\{32\}\), /\1,/g' | sed "s:${BASE_DIR}/::g" > ${hashText}
-#    )
 
-    # export find.txt
-        find -E ${BASE_DIR} -type d -name dist -prune -o \
-            -type f -regex "^.*\.${EXT}$" | sort | sed '1d' > ${findText}
     # export hash.txt
-#    find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 | \
-#(
-    #IFS=$'\n'
     find -E ${BASE_DIR} -type d -name dist -prune -o \
-        -type f -regex "^.*\.${EXT}$" -print0 | \
-        xargs -0 -n 3000 md5sum | \
-        awk 'BEGIN {} {
-                printf $1
-                printf ","
-                $1=""; print
-            }' | \
-        sed 's/\(^.\{32\}\), /\1,/g' > ${hashText}
-#    )
+        -type f -regex "^.*\.${EXT}$" -print0 \
+        | xargs -0 -n 3000 md5sum \
+        | awk 'BEGIN {} {
+                    printf $1
+                    printf ","
+                    $1=""; print
+                }' \
+        | sed 's/\(^.\{32\}\), /\1,/g' > ${hashText}
 
     # export exif.txt
-#    ext_option=$(echo ${EXT} | sed 's/(/-ext /g' | sed 's/)//g' | sed 's/|/ -ext /g')
-#    exiftool ${BASE_DIR} -r ${ext_option} \
-    #cat ${findText} | \
     find -E ${BASE_DIR} -type d -name dist -prune -o \
-        -type f -regex "^.*\.${EXT}$" -print0 | \
-        xargs -0 -n 3000 exiftool -d %Y%m%d%H%M%S -p ${SELF}/lib/exif.fmt -fast2 -m | \
-        awk -v hash=${hashText} -v file={} \
+        -type f -regex "^.*\.${EXT}$" -print0 \
+        | xargs -0 -n 3000 exiftool -d %Y%m%d%H%M%S -p ${SELF}/lib/exif.fmt -fast2 -m 2>/dev/null\
+        | awk -v hash=${hashText} -v file={} \
             'BEGIN { FS=","; OFS="," } {
                 min_v = 29991231235959
                 if ( $4 != "" && $4 != "0000:00:00 00:00:00" && min_v > $4 ) {
@@ -153,27 +84,40 @@ function _checkup() {
                 } else {
                     min_v = "none"
                 }
+                if( $3 == "" ) { $3 = "unknown" }
+
                 #sub(/\..*$/,"",$1)
                 #getline v<hash
                 #print v, $1, tag, min_v, $2, $3, $4, $5
-                print $1"/"$2, $3, tag, min_v, $4, $5, $6, $7
+                # $1:dir, $2:filename, $3:mime,
+                # $4:DTO, $5:CD, $6:FCD, $7:FMD
+                # $8:error
+                print $1"/"$2, $3, tag, min_v, $4, $5, $6, $7, $8
         }' > ${exifText}
-    # merge hash.txt and exif.txt
-#    [ $(_compaier_line_count $(_count ${hashText}) $(_count ${exifText})) = "OK" ] && {
-#        paste -d, ${hashText} ${exifText} >> ${ORIG_FILES}
-#    } || _failed "hash.txt and exif.txt are miss match. hash: $(_count ${hashText}), exif: $(_count ${exifText})"
 
-    join -t ',' -1 2 -2 1 ${hashText} ${exifText} | \
-        awk -F ',' 'BEGIN { FS=","; OFS="," } {
-                        print $2, $1, $3, $4, $5, $6, $7, $8, $9
-                    }' | \
-        sed "s:${BASE_DIR}/::" >> ${ORIG_FILES}
+    # merge hash.txt and exif.txt
+    if [ $(_count ${hashText}) -eq $(_count ${exifText}) ]; then
+        join -t ',' -1 2 -2 1 ${hashText} ${exifText} \
+            | awk 'BEGIN { FS=","; OFS="," } {
+                        # $1:file, $2:hash, $3:mime, $4:DTag, $5:minDate
+                        # $6:DTO, $7:CD, $8:FCD, $9:FMD
+                        # $10:error
+                        print $2, $1, $3, $4, $5, $6, $7, $8, $9, $10
+                    }' \
+            | sed "s:${BASE_DIR}/::" >> ${ORIG_FILES}
+    else
+        _failed "join error. hashText: $(_count ${hashText}), exifText: $(_count ${exifText})"
+    fi
 
     # divide to unique and duplicate
-    cat ${ORIG_FILES} | sort | awk \
-            -v unique=${ORIG_FILES_UNIQUE} -v duplicate=${ORIG_FILES_DUPLICATE} \
+    cat ${ORIG_FILES} \
+        | sort \
+        | awk -v unique=${ORIG_FILES_UNIQUE} -v duplicate=${ORIG_FILES_DUPLICATE} \
+            -v broken=${ORIG_FILES_BROKEN} \
                     'BEGIN { FS=","; prev_hash="" } {
-                        if( prev_hash != $1 ) {
+                        if( $10 != "" ) {
+                            print $0 >> broken
+                        } else if( prev_hash != $1 ) {
                             print $0 >> unique
                         } else {
                             print $0 >> duplicate
@@ -215,25 +159,23 @@ function _tidy_photo() {
 
     # Move file (unique)
     cat ${ORIG_FILES_UNIQUE} | cut -d, -f 2,5 | while IFS=$'\n' read line; do
-#        hash=${line#,*}
         file=${line%,*}
         dateTime=${line#*,}
-
         to=$(_make_date_dir ${DATA_DIR} ${dateTime:0:8})/"${file##*/}"
         _move_file "${BASE_DIR}/${file}" "${to}" | sed "s:${BASE_DIR}/::g"
-#        printf "[$(basename "${file}")] unique to ${dateTime:0:8}\n"
     done >> ${MV_RESULT_UNIQUE}
 
     # Move file (duplicate)
     cat ${ORIG_FILES_DUPLICATE} | cut -d, -f 2 | while IFS=$'\n' read file; do
-#        hash=${line#,*}
-#        origFile=${line#,*}
-#        dateTime=${line##*,}
-
         to=${DATA_DUPLICATE_DIR}/"${file##*/}"
         _move_file "${BASE_DIR}/${file}" "${to}" | sed "s:${BASE_DIR}/::g"
-#        printf "[$(basename "${origFile}")] duplicate as $(basename "${to}")\n"
     done >> ${MV_RESULT_DUPLICATE}
+
+    # Move file (broken)
+    cat ${ORIG_FILES_BROKEN} | cut -d, -f 2 | while IFS=$'\n' read file; do
+        to=${DATA_BROKEN_DIR}/"${file##*/}"
+        _move_file "${BASE_DIR}/${file}" "${to}" | sed "s:${BASE_DIR}/::g"
+    done >> ${MV_RESULT_BROKEN}
 }
 
 function _param_check() {
@@ -261,14 +203,14 @@ case $1 in
     tidy )
         echo "[${SCRIPT_NAME}] check-up photo files."
         _checkup $@
-        [ $(_verify_checkup) -ne 0 ] && _failed "checkup() failed"
+        if ! $(_verify_checkup); then _failed "checkup() failed"; fi
 
         _tidy_photo $@
-        [ $(_verify_tidy) -ne 0 ] && _failed "tidy() failed"
+        if ! $(_verify_tidy); then _failed "tidy() failed"; fi
         ;;
     index )
-        . ${SELF}/fnc/_create_index.fnc
-        _create_index
+        . ${SELF}/fnc/_index.fnc
+        _index
         ;;
     album )
         . ${SELF}/fnc/_create_album.fnc
@@ -279,10 +221,6 @@ case $1 in
         _export_kml
         ;;
     mime2ext )
-        [ ! -f ${ORIG_FILES} ] && {
-            _checkup $@
-            [ $(_verify_checkup) -ne 0 ] && _failed "checkup() failed"
-        }
         . ${SELF}/fnc/_mime2ext.fnc
         _mime2ext
         ;;
