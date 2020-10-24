@@ -7,7 +7,7 @@ function _set_constant() {
     # script
     readonly SELF=$(cd $(dirname $0); pwd)
     readonly SCRIPT_NAME="TIDY_PHOTO"
-    readonly VERSION="0.7"
+    readonly VERSION="0.8.1"
 
     # directory
     readonly BASE_DIR=$(echo $2 | sed -e 's:\/$::') # remove last '/'
@@ -111,51 +111,63 @@ function _checkup() {
 #    )
 
     # export find.txt
-    find -E ${BASE_DIR} -type d -name dist -prune -o \
-        -type f -regex "^.*\.${EXT}$" | sort | sed '1d' > ${findText}
-
+        find -E ${BASE_DIR} -type d -name dist -prune -o \
+            -type f -regex "^.*\.${EXT}$" | sort | sed '1d' > ${findText}
     # export hash.txt
 #    find -E ${BASE_DIR} -type d -name dist -prune -o -type f -regex "^.*\.${EXT}$" -print0 | \
-    cat ${findText} | \
-        xargs -n 3000 md5sum | \
+#(
+    #IFS=$'\n'
+    find -E ${BASE_DIR} -type d -name dist -prune -o \
+        -type f -regex "^.*\.${EXT}$" -print0 | \
+        xargs -0 -n 3000 md5sum | \
         awk 'BEGIN {} {
                 printf $1
                 printf ","
                 $1=""; print
             }' | \
-        sed 's/\(^.\{32\}\), /\1,/g' | \
-        sed "s:${BASE_DIR}/::g" > ${hashText}
+        sed 's/\(^.\{32\}\), /\1,/g' > ${hashText}
+#    )
 
     # export exif.txt
 #    ext_option=$(echo ${EXT} | sed 's/(/-ext /g' | sed 's/)//g' | sed 's/|/ -ext /g')
 #    exiftool ${BASE_DIR} -r ${ext_option} \
-    cat ${findText} | \
-        xargs -n 3000 exiftool -d %Y%m%d%H%M%S -p ${SELF}/lib/exif.fmt -fast2 -m | \
-        awk 'BEGIN { FS=","; OFS="," } {
+    #cat ${findText} | \
+    find -E ${BASE_DIR} -type d -name dist -prune -o \
+        -type f -regex "^.*\.${EXT}$" -print0 | \
+        xargs -0 -n 3000 exiftool -d %Y%m%d%H%M%S -p ${SELF}/lib/exif.fmt -fast2 -m | \
+        awk -v hash=${hashText} -v file={} \
+            'BEGIN { FS=","; OFS="," } {
                 min_v = 29991231235959
-                if ( $2 != "" && $2 != "0000:00:00 00:00:00" && min_v > $2 ) {
+                if ( $4 != "" && $4 != "0000:00:00 00:00:00" && min_v > $4 ) {
                     tag = "DateTimeOriginal"
-                    min_v = $2
-                } else if ( $3 != "" && $3 != "0000:00:00 00:00:00" && min_v > $3 ) {
-                    tag = "CreateDate"
-                    min_v = $3
-                } else if ( $4 != "" && $4 != "0000:00:00 00:00:00" && min_v > $4 ) {
-                    tag = "ModifyDate"
                     min_v = $4
                 } else if ( $5 != "" && $5 != "0000:00:00 00:00:00" && min_v > $5 ) {
-                    tag = "FileModifyDate"
+                    tag = "CreateDate"
                     min_v = $5
+                } else if ( $6 != "" && $6 != "0000:00:00 00:00:00" && min_v > $6 ) {
+                    tag = "ModifyDate"
+                    min_v = $6
+                } else if ( $7 != "" && $7 != "0000:00:00 00:00:00" && min_v > $7 ) {
+                    tag = "FileModifyDate"
+                    min_v = $7
                 } else {
                     min_v = "none"
                 }
                 #sub(/\..*$/,"",$1)
-                print $1, tag, min_v, $2, $3, $4, $5
+                #getline v<hash
+                #print v, $1, tag, min_v, $2, $3, $4, $5
+                print $1"/"$2, $3, tag, min_v, $4, $5, $6, $7
         }' > ${exifText}
-
     # merge hash.txt and exif.txt
-    [ $(_compaier_line_count $(_count ${hashText}) $(_count ${exifText})) = "OK" ] && {
-        paste -d, ${hashText} ${exifText} >> ${ORIG_FILES}
-    } || _failed "hash.txt and exif.txt are miss match. hash: $(_count ${hashText}), exif: $(_count ${exifText})"
+#    [ $(_compaier_line_count $(_count ${hashText}) $(_count ${exifText})) = "OK" ] && {
+#        paste -d, ${hashText} ${exifText} >> ${ORIG_FILES}
+#    } || _failed "hash.txt and exif.txt are miss match. hash: $(_count ${hashText}), exif: $(_count ${exifText})"
+
+    join -t ',' -1 2 -2 1 ${hashText} ${exifText} | \
+        awk -F ',' 'BEGIN { FS=","; OFS="," } {
+                        print $2, $1, $3, $4, $5, $6, $7, $8, $9
+                    }' | \
+        sed "s:${BASE_DIR}/::" >> ${ORIG_FILES}
 
     # divide to unique and duplicate
     cat ${ORIG_FILES} | sort | awk \
@@ -202,26 +214,26 @@ function _tidy_photo() {
     }
 
     # Move file (unique)
-    cat ${ORIG_FILES_UNIQUE} | while IFS=$'\n' read line; do
-        hash=$(echo ${line} | cut -d ',' -f 1)
-        origFile=${BASE_DIR}/$(echo ${line} | cut -d ',' -f 2)
-        dateTime=$(echo ${line} | cut -d ',' -f 5)
+    cat ${ORIG_FILES_UNIQUE} | cut -d, -f 2,5 | while IFS=$'\n' read line; do
+#        hash=${line#,*}
+        file=${line%,*}
+        dateTime=${line#*,}
 
-        to=$(_make_date_dir ${DATA_DIR} ${dateTime:0:8})/$(basename "${origFile}")
-        _move_file "${origFile}" "${to}" | sed "s:${BASE_DIR}/::g" >> ${MV_RESULT_UNIQUE}
-        printf "[$(basename "${origFile}")] unique to ${dateTime:0:8}\n"
-    done
+        to=$(_make_date_dir ${DATA_DIR} ${dateTime:0:8})/"${file##*/}"
+        _move_file "${BASE_DIR}/${file}" "${to}" | sed "s:${BASE_DIR}/::g"
+#        printf "[$(basename "${file}")] unique to ${dateTime:0:8}\n"
+    done >> ${MV_RESULT_UNIQUE}
 
     # Move file (duplicate)
-    cat ${ORIG_FILES_DUPLICATE} | while IFS=$'\n' read line; do
-        hash=$(echo ${line} | cut -d ',' -f 1)
-        origFile=${BASE_DIR}/$(echo ${line} | cut -d ',' -f 2)
-        dateTime=$(echo ${line} | cut -d ',' -f 5)
+    cat ${ORIG_FILES_DUPLICATE} | cut -d, -f 2 | while IFS=$'\n' read file; do
+#        hash=${line#,*}
+#        origFile=${line#,*}
+#        dateTime=${line##*,}
 
-        to=${DATA_DUPLICATE_DIR}/$(basename "${origFile}")
-        _move_file "${origFile}" "${to}" | sed "s:${BASE_DIR}/::g" >> ${MV_RESULT_DUPLICATE}
-        printf "[$(basename "${origFile}")] duplicate as $(basename "${to}")\n"
-    done
+        to=${DATA_DUPLICATE_DIR}/"${file##*/}"
+        _move_file "${BASE_DIR}/${file}" "${to}" | sed "s:${BASE_DIR}/::g"
+#        printf "[$(basename "${origFile}")] duplicate as $(basename "${to}")\n"
+    done >> ${MV_RESULT_DUPLICATE}
 }
 
 function _param_check() {
