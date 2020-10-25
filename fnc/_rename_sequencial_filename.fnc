@@ -1,7 +1,7 @@
 function _rename_sequential_filename() {
     local current_dir=''
     local digits=4
-    local prefix="kazuyo_"
+    local prefix=""
 
     STASH_IFS=${IFS}; IFS=$'\n'
     for file in $(find -E ${BASE_DIR} -type f -regex "^.*\.${EXT}$" | sort); do

@@ -8,7 +8,7 @@ function _log() {
 }
 
 function _failed()  {
-    [ -d ${TMP_DIR} ] && rm -rf ${TMP_DIR}
+    [ -d "${TMP_DIR}" ] && rm -rf "${TMP_DIR}"
     _log $@
     exit 1
 }

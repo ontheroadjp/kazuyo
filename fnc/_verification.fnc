@@ -1,5 +1,5 @@
 function _count() {
-    echo $(cat $1 | wc -l)
+    echo $(cat "$1" | wc -l)
 }
 
 function _compaier_line_count() {
@@ -7,17 +7,17 @@ function _compaier_line_count() {
 }
 
 function _verify_result() {
-    local ori=$(_count ${ORIG_FILES})
-    local ori_uni=$(_count ${ORIG_FILES_UNIQUE})
-    local ori_dup=$(_count ${ORIG_FILES_DUPLICATE})
-    local ori_bro=$(_count ${ORIG_FILES_BROKEN})
+    local ori=$(_count "${ORIG_FILES}")
+    local ori_uni=$(_count "${ORIG_FILES_UNIQUE}")
+    local ori_dup=$(_count "${ORIG_FILES_DUPLICATE}")
+    local ori_bro=$(_count "${ORIG_FILES_BROKEN}")
 
     local org_status=$(
         _compaier_line_count ${ori} $(( ${ori_uni} + ${ori_dup} + ${ori_bro} ))
     )
 
     local mime_type_status=$(
-        cat ${ORIG_FILES} | cut -d, -f 3 | sort | uniq -c | sort -r \
+        cat "${ORIG_FILES}" | cut -d, -f 3 | sort | uniq -c | sort -r \
         | awk -v ori_count=${ori} \
             '{sum += $1 }
             END{
@@ -27,9 +27,9 @@ function _verify_result() {
     )
 
     local mvResultStatus=$(
-     if $(_compaier_line_count $(_count ${MV_RESULT_UNIQUE}) ${ori_uni}) \
-        && $(_compaier_line_count $(_count ${MV_RESULT_DUPLICATE}) ${ori_dup}) \
-        && $(_compaier_line_count $(_count ${MV_RESULT_BROKEN}) ${ori_bro}); then
+     if $(_compaier_line_count $(_count "${MV_RESULT_UNIQUE}") ${ori_uni}) \
+        && $(_compaier_line_count $(_count "${MV_RESULT_DUPLICATE}") ${ori_dup}) \
+        && $(_compaier_line_count $(_count "${MV_RESULT_BROKEN}") ${ori_bro}); then
         echo "OK"
     else
         echo "NG"
@@ -37,7 +37,7 @@ function _verify_result() {
     )
 
     local duplicated_hash_status=$(
-        cat ${ORIG_FILES} \
+        cat "${ORIG_FILES}" \
             | awk -F ',' '$10 == "" { print $1 }' \
             | sort \
             | uniq -c \
@@ -51,11 +51,11 @@ function _verify_result() {
         )
 
     local index_status=''
-    [ -d ${DIST_DIR}/index ] && {
+    [ -d "${DIST_DIR}"/index ] && {
         index_status=$(
-            local thub_count=$(find ${DIST_DIR}/index/images/thumbnail -type f | wc -l)
-            local med_count=$(find ${DIST_DIR}/index/images/medium -type f | wc -l)
-            local mov_count=$(find ${DIST_DIR}/index/movies -type f | wc -l)
+            local thub_count=$(find "${DIST_DIR}"/index/images/thumbnail -type f | wc -l)
+            local med_count=$(find "${DIST_DIR}"/index/images/medium -type f | wc -l)
+            local mov_count=$(find "${DIST_DIR}"/index/movies -type f | wc -l)
             [ ${ori_uni} -eq ${thub_count} ] && [ ${ori_uni} -eq ${med_count} ] && {
                 echo true
             } || {
@@ -64,7 +64,7 @@ function _verify_result() {
         )
     }
 
-    echo "${org_status},${mime_type_status},${mvResultStatus},${duplicated_hash_status},${index_status}"
+    echo ${org_status},${mime_type_status},${mvResultStatus},${duplicated_hash_status},${index_status}
 }
 
 function _verify_checkup() {
@@ -91,22 +91,22 @@ function _show_tidy_result() {
     echo " in $2"
     echo "---------------------------------------------------------------"
     echo "[Original (${org_status})]"
-    printf "%8d file(s) found.\n" $(_count ${ORIG_FILES})
-    printf "%8d file(s) in unique list.%s\n" $(_count ${ORIG_FILES_UNIQUE})
-    printf "%8d file(s) in duplicate list.\n" $(_count ${ORIG_FILES_DUPLICATE})
-    printf "%8d file(s) in broken list.\n" $(_count ${ORIG_FILES_BROKEN})
+    printf "%8d file(s) found.\n" $(_count "${ORIG_FILES}")
+    printf "%8d file(s) in unique list.%s\n" $(_count "${ORIG_FILES_UNIQUE}")
+    printf "%8d file(s) in duplicate list.\n" $(_count "${ORIG_FILES_DUPLICATE}")
+    printf "%8d file(s) in broken list.\n" $(_count "${ORIG_FILES_BROKEN}")
     echo ""
     echo "[MIME Type (${mime_type_status})]"
-    printf "%8d %s\n" $(cat ${ORIG_FILES} | cut -d, -f 3 | sort | uniq -c | sort -r)
+    printf "%8d %s\n" $(cat "${ORIG_FILES}" | cut -d, -f 3 | sort | uniq -c | sort -r)
     echo ""
     echo "[mv/cp Result (${mvResultStatus})]"
-    printf "%8d file(s) in unique list.\n" $(_count ${MV_RESULT_UNIQUE})
-    printf "%8d file(s) in duplicate list.\n" $(_count ${MV_RESULT_DUPLICATE})
-    printf "%8d file(s) in broken list.\n" $(_count ${MV_RESULT_BROKEN})
-    [ $(cat ${ORIG_FILES_DUPLICATE} | wc -l) -ne 0 ] && {
+    printf "%8d file(s) in unique list.\n" $(_count "${MV_RESULT_UNIQUE}")
+    printf "%8d file(s) in duplicate list.\n" $(_count "${MV_RESULT_DUPLICATE}")
+    printf "%8d file(s) in broken list.\n" $(_count "${MV_RESULT_BROKEN}")
+    [ $(cat "${ORIG_FILES_DUPLICATE}" | wc -l) -ne 0 ] && {
         echo ""
         echo "[duplicated hash (${duplicated_hash_status})]"
-        cat ${ORIG_FILES} \
+        cat "${ORIG_FILES}" \
             | awk -F ',' '$10 == "" { print $1 }' \
             | sort \
             | uniq -c \
@@ -114,7 +114,7 @@ function _show_tidy_result() {
             | awk '{ sum+=$1 } END{ printf "%6s=%d, to unique(NR)=%d, to duplicate=%d\n", "all", sum, NR, sum - NR}' \
             | sort -r
         printf '%6s\n\n' "   (one file has moved into unique list and others into duplicate list.)"
-        cat ${ORIG_FILES} \
+        cat "${ORIG_FILES}" \
             | sort \
             | cut -d, -f 1 \
             | uniq -c \
@@ -122,11 +122,11 @@ function _show_tidy_result() {
             | sort -r
     }
     echo ""
-    [ -d ${DIST_DIR}/index ] && {
+    [ -d "${DIST_DIR}"/index ] && {
         echo "[Index Result (${index_status})]"
-        printf "%8d image(s) in thumbnail dir.\n" $(find ${DIST_DIR}/index/images/thumbnail -type f | wc -l)
-        printf "%8d image(s) in medium dir.\n" $(find ${DIST_DIR}/index/images/medium -type f | wc -l)
-        printf "%8d movie(s) in movies dir.\n" $(find ${DIST_DIR}/index/movies -type f | wc -l)
+        printf "%8d image(s) in thumbnail dir.\n" $(find "${DIST_DIR}"/index/images/thumbnail -type f | wc -l)
+        printf "%8d image(s) in medium dir.\n" $(find "${DIST_DIR}"/index/images/medium -type f | wc -l)
+        printf "%8d movie(s) in movies dir.\n" $(find "${DIST_DIR}"/index/movies -type f | wc -l)
         echo ""
     }
 }

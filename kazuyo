@@ -10,49 +10,52 @@ function _set_constant() {
     readonly VERSION="0.8.2"
 
     # directory
-    readonly BASE_DIR=$(echo $2 | sed -e 's:\/$::') # remove last '/'
-    readonly DIST_DIR="${BASE_DIR}/dist"
-    readonly DATA_DIR="${DIST_DIR}/data"
-    readonly DATA_DUPLICATE_DIR="${DIST_DIR}/data_duplicate"
-    readonly DATA_BROKEN_DIR="${DIST_DIR}/data_broken"
-    readonly REPORT_DIR="${DIST_DIR}/report"
-    readonly TMP_DIR="${DIST_DIR}/tmp"
+    STASH_IFS=${IFS}; IFS=$'\n'
+    readonly BASE_DIR=$(echo "$2" | sed -e 's:\/$::') # remove last '/'
+    readonly DIST_DIR="${BASE_DIR}"/dist
+    readonly DATA_DIR="${DIST_DIR}"/data
+    readonly DATA_DUPLICATE_DIR="${DIST_DIR}"/data_duplicate
+    readonly DATA_BROKEN_DIR="${DIST_DIR}"/data_broken
+    readonly REPORT_DIR="${DIST_DIR}"/report
+    readonly TMP_DIR="${DIST_DIR}"/tmp
+    IFS=${STASH_IFS}
 
     # original file
-    readonly ORIG_FILES=${REPORT_DIR}/original.txt
-    readonly ORIG_FILES_UNIQUE=${REPORT_DIR}/original_unique.txt
-    readonly ORIG_FILES_DUPLICATE=${REPORT_DIR}/original_duplicate.txt
-    readonly ORIG_FILES_BROKEN=${REPORT_DIR}/original_broken.txt
+    readonly ORIG_FILES="${REPORT_DIR}"/original.txt
+    readonly ORIG_FILES_UNIQUE="${REPORT_DIR}"/original_unique.txt
+    readonly ORIG_FILES_DUPLICATE="${REPORT_DIR}"/original_duplicate.txt
+    readonly ORIG_FILES_BROKEN="${REPORT_DIR}"/original_broken.txt
 
     # mv result
-    readonly MV_RESULT_UNIQUE=${REPORT_DIR}/mv_result_unique.txt
-    readonly MV_RESULT_DUPLICATE=${REPORT_DIR}/mv_result_duplicate.txt
-    readonly MV_RESULT_BROKEN=${REPORT_DIR}/mv_result_broken.txt
+    readonly MV_RESULT_UNIQUE="${REPORT_DIR}"/mv_result_unique.txt
+    readonly MV_RESULT_DUPLICATE="${REPORT_DIR}"/mv_result_duplicate.txt
+    readonly MV_RESULT_BROKEN="${REPORT_DIR}"/mv_result_broken.txt
 
     # target file type
     readonly EXT="(JPG|jpg|jpeg|PNG|png|TIFF|TIF|tiff|tif|CR2|NEF|ARW|MOV|mov|AVI|avi|MPG|mpg|mpeg|mp4)"
 }
 
 function _rebuild_dist_dir() {
-    [ -d ${DIST_DIR} ] && {
-        rm -rf ${DIST_DIR}/{data,data_duplicate,data_broken,report,tmp}
+    [ -d "${DIST_DIR}" ] && {
+        rm -rf "${DIST_DIR}"/{data,data_duplicate,data_broken,report,tmp}
     }
-    mkdir -p ${DATA_DIR} ${DATA_DUPLICATE_DIR} ${DATA_BROKEN_DIR} ${REPORT_DIR}
-    touch ${ORIG_FILES} ${ORIG_FILES_UNIQUE} ${ORIG_FILES_DUPLICATE} ${ORIG_FILES_BROKEN}
-    touch ${MV_RESULT_UNIQUE} ${MV_RESULT_DUPLICATE} ${MV_RESULT_BROKEN}
+    mkdir -p "${DATA_DIR}" "${DATA_DUPLICATE_DIR}" "${DATA_BROKEN_DIR}" "${REPORT_DIR}"
+    touch "${ORIG_FILES}" "${ORIG_FILES_UNIQUE}" "${ORIG_FILES_DUPLICATE}" "${ORIG_FILES_BROKEN}"
+    touch "${MV_RESULT_UNIQUE}" "${MV_RESULT_DUPLICATE}" "${MV_RESULT_BROKEN}"
 }
 
 function _checkup() {
 
     _rebuild_dist_dir
 
-    local tmpDir="${TMP_DIR}/checkup"
-    local hashText=${tmpDir}/hash.txt
-    local exifText=${tmpDir}/exif.txt
-    mkdir -p ${tmpDir}
+    local tmpDir="${TMP_DIR}"/checkup
+    local hashText="${tmpDir}"/hash.txt
+    local exifText="${tmpDir}"/exif.txt
+    mkdir -p "${tmpDir}"
 
     # export hash.txt
-    find -E ${BASE_DIR} -type d -name dist -prune -o \
+    printf "export hash.txt..."
+    find -E "${BASE_DIR}" -type d -name dist -prune -o \
         -type f -regex "^.*\.${EXT}$" -print0 \
         | xargs -0 -n 3000 md5sum \
         | awk 'BEGIN {} {
@@ -60,13 +63,15 @@ function _checkup() {
                     printf ","
                     $1=""; print
                 }' \
-        | sed 's/\(^.\{32\}\), /\1,/g' > ${hashText}
+        | sed 's/\(^.\{32\}\), /\1,/g' > "${hashText}"
+    printf "done\n"
 
     # export exif.txt
-    find -E ${BASE_DIR} -type d -name dist -prune -o \
+    printf "export exif.txt..."
+    find -E "${BASE_DIR}" -type d -name dist -prune -o \
         -type f -regex "^.*\.${EXT}$" -print0 \
         | xargs -0 -n 3000 exiftool -d %Y%m%d%H%M%S -p ${SELF}/lib/exif.fmt -fast2 -m 2>/dev/null\
-        | awk -v hash=${hashText} -v file={} \
+        | awk -v hash="${hashText}" -v file={} \
             'BEGIN { FS=","; OFS="," } {
                 min_v = 29991231235959
                 if ( $4 != "" && $4 != "0000:00:00 00:00:00" && min_v > $4 ) {
@@ -93,27 +98,30 @@ function _checkup() {
                 # $4:DTO, $5:CD, $6:FCD, $7:FMD
                 # $8:error
                 print $1"/"$2, $3, tag, min_v, $4, $5, $6, $7, $8
-        }' > ${exifText}
+        }' > "${exifText}"
+    printf "done\n"
 
     # merge hash.txt and exif.txt
-    if [ $(_count ${hashText}) -eq $(_count ${exifText}) ]; then
-        join -t ',' -1 2 -2 1 ${hashText} ${exifText} \
+    printf "join hash.txt and exif.txt..."
+    if [ $(_count "${hashText}") -eq $(_count "${exifText}") ]; then
+        join -t ',' -1 2 -2 1 "${hashText}" "${exifText}" \
             | awk 'BEGIN { FS=","; OFS="," } {
                         # $1:file, $2:hash, $3:mime, $4:DTag, $5:minDate
                         # $6:DTO, $7:CD, $8:FCD, $9:FMD
                         # $10:error
                         print $2, $1, $3, $4, $5, $6, $7, $8, $9, $10
                     }' \
-            | sed "s:${BASE_DIR}/::" >> ${ORIG_FILES}
+            | sed "s:${BASE_DIR}/::" >> "${ORIG_FILES}"
     else
-        _failed "join error. hashText: $(_count ${hashText}), exifText: $(_count ${exifText})"
+        _failed "join error. hashText: $(_count "${hashText}"), exifText: $(_count "${exifText}")"
     fi
+    printf "done\n"
 
     # divide to unique and duplicate
-    cat ${ORIG_FILES} \
+    cat "${ORIG_FILES}" \
         | sort \
-        | awk -v unique=${ORIG_FILES_UNIQUE} -v duplicate=${ORIG_FILES_DUPLICATE} \
-            -v broken=${ORIG_FILES_BROKEN} \
+        | awk -v unique="${ORIG_FILES_UNIQUE}" -v duplicate="${ORIG_FILES_DUPLICATE}" \
+            -v broken="${ORIG_FILES_BROKEN}" \
                     'BEGIN { FS=","; prev_hash="" } {
                         if( $10 != "" ) {
                             print $0 >> broken
@@ -132,8 +140,8 @@ function _tidy_photo() {
     # $2: datetime (yyyymmdd)
     function _make_date_dir() {
         dateDir=$1/${2:0:4}年/${2:4:2}月/${2:0:8}
-        mkdir -p ${dateDir}
-        echo ${dateDir}
+        mkdir -p "${dateDir}"
+        echo "${dateDir}"
     }
 
     # $1: from
@@ -147,7 +155,7 @@ function _tidy_photo() {
         else
             for i in $(seq 999); do
                 fixed=${2%.*}_$(printf %03d ${i}).${2##*.}
-                [ ! -e ${fixed} ]  && {
+                [ ! -e "${fixed}" ]  && {
 #                    mv "$1" "${fixed}"
                     cp "$1" "${fixed}"
                     echo "$1","${fixed}"
@@ -157,25 +165,55 @@ function _tidy_photo() {
         fi
     }
 
+    function _fromTo() {
+        # move file
+        if [ ! -e "$2" ]; then
+            echo "$1","$2"
+        else
+            for i in $(seq 999); do
+                fixed=${2%.*}_$(printf %03d ${i}).${2##*.}
+                [ ! -e "${fixed}" ]  && {
+                    echo "$1","${fixed}"
+                    break;
+                }
+            done
+        fi
+    }
+
     # Move file (unique)
-    cat ${ORIG_FILES_UNIQUE} | cut -d, -f 2,5 | while IFS=$'\n' read line; do
+    cat "${ORIG_FILES_UNIQUE}" | cut -d, -f 2,5 | while IFS=$'\n' read line; do
         file=${line%,*}
         dateTime=${line#*,}
-        to=$(_make_date_dir ${DATA_DIR} ${dateTime:0:8})/"${file##*/}"
-        _move_file "${BASE_DIR}/${file}" "${to}" | sed "s:${BASE_DIR}/::g"
-    done >> ${MV_RESULT_UNIQUE}
+        to=$(_make_date_dir "${DATA_DIR}" ${dateTime:0:8})/"${file##*/}"
+        _move_file "${BASE_DIR}"/"${file}" "${to}" | sed "s:${BASE_DIR}/::g"
+    done >> "${MV_RESULT_UNIQUE}"
 
     # Move file (duplicate)
-    cat ${ORIG_FILES_DUPLICATE} | cut -d, -f 2 | while IFS=$'\n' read file; do
-        to=${DATA_DUPLICATE_DIR}/"${file##*/}"
-        _move_file "${BASE_DIR}/${file}" "${to}" | sed "s:${BASE_DIR}/::g"
-    done >> ${MV_RESULT_DUPLICATE}
+    cat "${ORIG_FILES_DUPLICATE}" | cut -d, -f 1,2 | while IFS=$'\n' read line; do
+        file=${line#*,}
+        to="${DATA_DUPLICATE_DIR}"/"${file##*/}"
+#        _move_file "${BASE_DIR}/${file}" "${to}" | sed "s:${BASE_DIR}/::g"
+        local fromTo=$(_fromTo "${BASE_DIR}"/"${file}" "${to}")
+        mkdir -p "${fromTo#*,}"
+        cp "${BASE_DIR}"/"${file}" "${fromTo#*,}"/"${file##*/}"
+
+        hash=${line%,*}
+        dupWith=$(cat "${ORIG_FILES_UNIQUE}" | grep ${hash} | cut -d, -f 2,5)
+        d="${dupWith#*,}"
+        location="${d:0:4}年/${d:4:2}月/${d:0:8}/$(basename "${dupWith%,*}")"
+        {
+            echo "This is a duplicate file."
+            echo ""
+            echo "Duplicate with: ${location}"
+        } > "${fromTo#*,}/info.txt"
+        echo "${fromTo}" >> "${MV_RESULT_DUPLICATE}"
+    done
 
     # Move file (broken)
-    cat ${ORIG_FILES_BROKEN} | cut -d, -f 2 | while IFS=$'\n' read file; do
-        to=${DATA_BROKEN_DIR}/"${file##*/}"
-        _move_file "${BASE_DIR}/${file}" "${to}" | sed "s:${BASE_DIR}/::g"
-    done >> ${MV_RESULT_BROKEN}
+    cat "${ORIG_FILES_BROKEN}" | cut -d, -f 2 | while IFS=$'\n' read file; do
+        to="${DATA_BROKEN_DIR}"/"${file##*/}"
+        _move_file "${BASE_DIR}"/"${file}" "${to}" | sed "s:${BASE_DIR}/::g"
+    done >> "${MV_RESULT_BROKEN}"
 }
 
 function _param_check() {
@@ -184,11 +222,11 @@ function _param_check() {
     fi
 }
 
-_set_constant $@
+_set_constant "$@"
 . ${SELF}/fnc/_verification.fnc
 . ${SELF}/fnc/_utilities.fnc
 
-_param_check $@
+_param_check "$@"
 
 case $1 in
 #    checkup )
@@ -202,10 +240,10 @@ case $1 in
 #        ;;
     tidy )
         echo "[${SCRIPT_NAME}] check-up photo files."
-        _checkup $@
+        _checkup "$@"
         if ! $(_verify_checkup); then _failed "checkup() failed"; fi
 
-        _tidy_photo $@
+        _tidy_photo "$@"
         if ! $(_verify_tidy); then _failed "tidy() failed"; fi
         ;;
     index )
@@ -229,14 +267,14 @@ case $1 in
         _rename_sequential_filename
         ;;
     status )
-        _show_tidy_result $@
+        _show_tidy_result "$@"
         ;;
     * )
         echo "[${SCRIPT_NAME}] bad argument"
         exit 1
 esac
 
-[ -d ${TMP_DIR} ] && rm -rf ${TMP_DIR}
+[ -d "${TMP_DIR}" ] && rm -rf "${TMP_DIR}"
 echo "[${SCRIPT_NAME}] all done"
 
 exit 0
